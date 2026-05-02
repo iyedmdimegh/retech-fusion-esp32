@@ -89,6 +89,161 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bilan/top-metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Top Metrics
+         * @description Top-N cumulative-meter metrics ranked by total consumption (max-min).
+         *
+         *     Only ``monotonic`` and not ``derived`` metrics qualify (the YAML knows).
+         *     Excludes rows tagged ``whole_column_zero`` / ``monotonic_inversion`` —
+         *     same data-quality filter the rest of the analytics use.
+         */
+        get: operations["top_metrics_api_bilan_top_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bilan/consumption": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Consumption
+         * @description Per-interval consumption series for the energy-analytics page.
+         *
+         *     pandas + read_sql is sync; we offload to a thread so the async loop
+         *     stays free.
+         */
+        get: operations["get_consumption_api_bilan_consumption_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/co2/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Co2 Series */
+        get: operations["co2_series_api_co2_series_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/co2/breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Co2 Breakdown */
+        get: operations["co2_breakdown_api_co2_breakdown_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/co2/forecast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Co2 Forecast */
+        get: operations["co2_forecast_api_co2_forecast_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/co2/anomalies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Co2 Anomalies */
+        get: operations["co2_anomalies_api_co2_anomalies_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/co2/models/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Co2 Models Status */
+        get: operations["co2_models_status_api_co2_models_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/co2/retrain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Co2 Retrain
+         * @description Re-run the full training pipeline. Synchronous — the dataset is
+         *     small enough that this completes well within an HTTP request window
+         *     (~5–15 s on the April BILAN sample). For larger datasets this should
+         *     be moved behind the existing RQ worker pattern.
+         */
+        post: operations["co2_retrain_api_co2_retrain_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -133,6 +288,211 @@ export interface components {
              */
             file: string;
         };
+        /** Co2AnomaliesResponse */
+        Co2AnomaliesResponse: {
+            /** From */
+            from_?: string | null;
+            /** To */
+            to?: string | null;
+            /** Count */
+            count: number;
+            /** Anomalies */
+            anomalies: components["schemas"]["Co2Anomaly"][];
+        };
+        /** Co2Anomaly */
+        Co2Anomaly: {
+            /**
+             * Time
+             * Format: date-time
+             */
+            time: string;
+            /** Co2 Total Kg */
+            co2_total_kg: number;
+            /** Anomaly Score */
+            anomaly_score?: number | null;
+        };
+        /** Co2BreakdownResponse */
+        Co2BreakdownResponse: {
+            /** From */
+            from_?: string | null;
+            /** To */
+            to?: string | null;
+            totals: components["schemas"]["Co2BreakdownTotals"];
+            share: components["schemas"]["Co2BreakdownShare"];
+        };
+        /** Co2BreakdownShare */
+        Co2BreakdownShare: {
+            /** Gas Pct */
+            gas_pct: number;
+            /** Grid Pct */
+            grid_pct: number;
+        };
+        /** Co2BreakdownTotals */
+        Co2BreakdownTotals: {
+            /** Co2 Total Kg */
+            co2_total_kg: number;
+            /** Co2 From Gas Kg */
+            co2_from_gas_kg: number;
+            /** Co2 From Grid Kg */
+            co2_from_grid_kg: number;
+            /** Gas Consumed Nm3 */
+            gas_consumed_nm3: number;
+            /** Elec Produced Kwh */
+            elec_produced_kwh: number;
+            /** Grid Imported Kwh */
+            grid_imported_kwh: number;
+            /** Grid Exported Kwh */
+            grid_exported_kwh: number;
+        };
+        /** Co2ForecastPoint */
+        Co2ForecastPoint: {
+            /**
+             * Target Time
+             * Format: date-time
+             */
+            target_time: string;
+            /** Horizon Hours */
+            horizon_hours: number;
+            /** Predicted Co2 Kg */
+            predicted_co2_kg: number;
+            /** Rmse Band */
+            rmse_band?: number | null;
+        };
+        /** Co2ForecastResponse */
+        Co2ForecastResponse: {
+            /**
+             * Forecast Made At
+             * Format: date-time
+             */
+            forecast_made_at: string;
+            /** Anchor Time */
+            anchor_time?: string | null;
+            /** Forecasts */
+            forecasts: components["schemas"]["Co2ForecastPoint"][];
+        };
+        /** Co2ModelStatus */
+        Co2ModelStatus: {
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /** Target */
+            target: string;
+            /** Horizon Hours */
+            horizon_hours: number;
+            /** Algorithm */
+            algorithm: string;
+            /** N Train Samples */
+            n_train_samples?: number | null;
+            /** N Test Samples */
+            n_test_samples?: number | null;
+            /** Mae */
+            mae?: number | null;
+            /** Rmse */
+            rmse?: number | null;
+            /** Mape */
+            mape?: number | null;
+            /** Feature Count */
+            feature_count?: number | null;
+            /** Artifact Path */
+            artifact_path: string;
+            /** Trained At */
+            trained_at?: string | null;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /** Co2RetrainResponse */
+        Co2RetrainResponse: {
+            /** Status */
+            status: string;
+            /** Rows In Dataset */
+            rows_in_dataset: number;
+            /** Forecasters Trained */
+            forecasters_trained: number;
+            /** Anomalies Flagged */
+            anomalies_flagged: number;
+            /** Duration Seconds */
+            duration_seconds: number;
+        };
+        /** Co2SeriesPoint */
+        Co2SeriesPoint: {
+            /**
+             * Time
+             * Format: date-time
+             */
+            time: string;
+            /** Gas Nm3 */
+            gas_nm3: number;
+            /** Elec Produced Kwh */
+            elec_produced_kwh: number;
+            /** Grid Import Kwh */
+            grid_import_kwh: number;
+            /** Grid Export Kwh */
+            grid_export_kwh: number;
+            /** Grid Net Kwh */
+            grid_net_kwh: number;
+            /** Co2 Gas Kg */
+            co2_gas_kg: number;
+            /** Co2 Grid Kg */
+            co2_grid_kg: number;
+            /** Co2 Total Kg */
+            co2_total_kg: number;
+            /** Is Anomaly */
+            is_anomaly: boolean;
+            /** Anomaly Score */
+            anomaly_score?: number | null;
+        };
+        /** Co2SeriesResponse */
+        Co2SeriesResponse: {
+            /** Granularity */
+            granularity: string;
+            /** Points */
+            points: components["schemas"]["Co2SeriesPoint"][];
+        };
+        /** ConsumptionPoint */
+        ConsumptionPoint: {
+            /**
+             * Time
+             * Format: date-time
+             */
+            time: string;
+            /** Gas Nm3 */
+            gas_nm3: number;
+            /** Elec Produced Kwh */
+            elec_produced_kwh: number;
+            /** Grid Import Kwh */
+            grid_import_kwh: number;
+            /** Grid Export Kwh */
+            grid_export_kwh: number;
+            /** Grid Net Kwh */
+            grid_net_kwh: number;
+        };
+        /** ConsumptionResponse */
+        ConsumptionResponse: {
+            /** Granularity */
+            granularity: string;
+            /** From */
+            from_?: string | null;
+            /** To */
+            to?: string | null;
+            /** Series */
+            series: components["schemas"]["ConsumptionPoint"][];
+            totals: components["schemas"]["ConsumptionTotals"];
+        };
+        /** ConsumptionTotals */
+        ConsumptionTotals: {
+            /** Gas Nm3 */
+            gas_nm3: number;
+            /** Elec Produced Kwh */
+            elec_produced_kwh: number;
+            /** Grid Import Kwh */
+            grid_import_kwh: number;
+            /** Grid Export Kwh */
+            grid_export_kwh: number;
+            /** Grid Net Kwh */
+            grid_net_kwh: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -170,6 +530,21 @@ export interface components {
             started_at?: string | null;
             /** Finished At */
             finished_at?: string | null;
+        };
+        /** TopMetric */
+        TopMetric: {
+            /** Metric Id */
+            metric_id: string;
+            /** Label */
+            label: string;
+            /** Category */
+            category: string;
+            /** Unit */
+            unit: string;
+            /** Total Delta */
+            total_delta: number;
+            /** N Readings */
+            n_readings: number;
         };
         /** UploadResponse */
         UploadResponse: {
@@ -352,6 +727,228 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    top_metrics_api_bilan_top_metrics_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopMetric"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_consumption_api_bilan_consumption_get: {
+        parameters: {
+            query?: {
+                file_id?: string | null;
+                from?: string | null;
+                to?: string | null;
+                granularity?: "10min" | "1h" | "1d";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsumptionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    co2_series_api_co2_series_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                to?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Co2SeriesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    co2_breakdown_api_co2_breakdown_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Co2BreakdownResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    co2_forecast_api_co2_forecast_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Co2ForecastResponse"];
+                };
+            };
+        };
+    };
+    co2_anomalies_api_co2_anomalies_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Co2AnomaliesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    co2_models_status_api_co2_models_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Co2ModelStatus"][];
+                };
+            };
+        };
+    };
+    co2_retrain_api_co2_retrain_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Co2RetrainResponse"];
                 };
             };
         };

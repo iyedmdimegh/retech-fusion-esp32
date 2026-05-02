@@ -10,6 +10,7 @@ from retech_part2._compat import apply_windows_event_loop_policy
 apply_windows_event_loop_policy()
 from retech_part2.api.routes import (
     bilan,
+    co2,
     documents,
     export,
     health,
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(jobs.router, prefix="/api/jobs", tags=["jobs"])
     app.include_router(readings.router, prefix="/api", tags=["readings"])
     app.include_router(bilan.router, prefix="/api/bilan", tags=["bilan"])
+    app.include_router(co2.router, prefix="/api/co2", tags=["co2"])
     app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
     app.include_router(search.router, prefix="/api/search", tags=["search"])
     app.include_router(export.router, prefix="/api/export", tags=["export"])

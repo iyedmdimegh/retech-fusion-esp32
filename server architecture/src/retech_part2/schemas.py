@@ -135,3 +135,142 @@ class InvoiceOut(_ORMBase):
     total: decimal.Decimal | None = None
     user_edited: bool | None = None
     edited_at: dt.datetime | None = None
+
+
+# ============================================================
+# analytics — BILAN consumption series
+# ============================================================
+
+class ConsumptionPoint(BaseModel):
+    time: dt.datetime
+    gas_nm3: float
+    elec_produced_kwh: float
+    grid_import_kwh: float
+    grid_export_kwh: float
+    grid_net_kwh: float
+
+
+class ConsumptionTotals(BaseModel):
+    gas_nm3: float
+    elec_produced_kwh: float
+    grid_import_kwh: float
+    grid_export_kwh: float
+    grid_net_kwh: float
+
+
+class ConsumptionResponse(BaseModel):
+    granularity: str
+    from_: dt.datetime | None = None
+    to: dt.datetime | None = None
+    series: list[ConsumptionPoint]
+    totals: ConsumptionTotals
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class TopMetric(BaseModel):
+    metric_id: str          # canonical id from mapping.yaml
+    label: str              # raw French label from BILAN sheet
+    category: str           # mapping category — used as the row subtitle
+    unit: str
+    total_delta: float      # max(value) - min(value) for cumulative meters
+    n_readings: int
+
+
+# ============================================================
+# analytics — CO₂ series, breakdown, forecast, anomalies, model registry
+# ============================================================
+
+class Co2SeriesPoint(BaseModel):
+    time: dt.datetime
+    gas_nm3: float
+    elec_produced_kwh: float
+    grid_import_kwh: float
+    grid_export_kwh: float
+    grid_net_kwh: float
+    co2_gas_kg: float
+    co2_grid_kg: float
+    co2_total_kg: float
+    is_anomaly: bool
+    anomaly_score: float | None = None
+
+
+class Co2SeriesResponse(BaseModel):
+    granularity: str
+    points: list[Co2SeriesPoint]
+
+
+class Co2BreakdownTotals(BaseModel):
+    co2_total_kg: float
+    co2_from_gas_kg: float
+    co2_from_grid_kg: float
+    gas_consumed_nm3: float
+    elec_produced_kwh: float
+    grid_imported_kwh: float
+    grid_exported_kwh: float
+
+
+class Co2BreakdownShare(BaseModel):
+    gas_pct: float
+    grid_pct: float
+
+
+class Co2BreakdownResponse(BaseModel):
+    from_: dt.datetime | None = None
+    to: dt.datetime | None = None
+    totals: Co2BreakdownTotals
+    share: Co2BreakdownShare
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class Co2ForecastPoint(BaseModel):
+    target_time: dt.datetime
+    horizon_hours: int
+    predicted_co2_kg: float
+    rmse_band: float | None = None
+
+
+class Co2ForecastResponse(BaseModel):
+    forecast_made_at: dt.datetime
+    anchor_time: dt.datetime | None = None
+    forecasts: list[Co2ForecastPoint]
+
+
+class Co2Anomaly(BaseModel):
+    time: dt.datetime
+    co2_total_kg: float
+    anomaly_score: float | None = None
+
+
+class Co2AnomaliesResponse(BaseModel):
+    from_: dt.datetime | None = None
+    to: dt.datetime | None = None
+    count: int
+    anomalies: list[Co2Anomaly]
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class Co2ModelStatus(BaseModel):
+    model_id: uuid.UUID
+    target: str
+    horizon_hours: int
+    algorithm: str
+    n_train_samples: int | None = None
+    n_test_samples: int | None = None
+    mae: float | None = None
+    rmse: float | None = None
+    mape: float | None = None
+    feature_count: int | None = None
+    artifact_path: str
+    trained_at: dt.datetime | None = None
+    is_active: bool
+
+
+class Co2RetrainResponse(BaseModel):
+    status: str
+    rows_in_dataset: int
+    forecasters_trained: int
+    anomalies_flagged: int
+    duration_seconds: float

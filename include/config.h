@@ -14,8 +14,12 @@
 #define SERIAL_BAUD      115200
 
 // ---- I2C / BME280 ----------------------------------------------------------
-#define I2C_SDA_PIN      21
-#define I2C_SCL_PIN      22
+// Note: GPIO 2 is a strapping pin and is wired to the onboard LED on many
+// esp32dev boards. Behaves fine for I2C with the BME280's onboard pull-ups;
+// the LED may flicker on bus traffic. If flashing ever gets stuck, briefly
+// disconnect the sensor.
+#define I2C_SDA_PIN      2
+#define I2C_SCL_PIN      15
 #define BME280_I2C_ADDR  0x76
 
 // ---- DS18B20 ---------------------------------------------------------------

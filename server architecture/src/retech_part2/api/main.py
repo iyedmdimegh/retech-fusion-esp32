@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from retech_part2 import __version__
 from retech_part2._compat import apply_windows_event_loop_policy
@@ -19,6 +20,13 @@ from retech_part2.api.routes import (
 )
 from retech_part2.logging import configure_logging
 
+# Vite dev server defaults; both 127.0.0.1 and localhost forms because the
+# browser uses whichever the user typed.
+_FRONTEND_DEV_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
 
 def create_app() -> FastAPI:
     configure_logging()
@@ -26,6 +34,14 @@ def create_app() -> FastAPI:
         title="Re-Tech Fusion — Phase 2",
         version=__version__,
         description="Data platform: BILAN ingestion, invoice OCR, MQTT (stubbed), query/export.",
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_FRONTEND_DEV_ORIGINS,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     app.include_router(health.router, tags=["health"])

@@ -1,4 +1,4 @@
-.PHONY: help install up down logs ps migrate revision test api worker watcher seed demo clean nuke
+.PHONY: help install up down logs ps migrate revision test api worker watcher mqtt seed demo clean nuke
 
 help:
 	@echo "Re-Tech Fusion Phase 2 — make targets"
@@ -13,6 +13,7 @@ help:
 	@echo "  api        Start FastAPI dev server (port 8000)"
 	@echo "  worker     Start RQ worker process"
 	@echo "  watcher    Start drop-folder watcher"
+	@echo "  mqtt       Start MQTT subscriber (live ESP32 ingestion)"
 	@echo "  seed       Seed the database with fixtures"
 	@echo "  demo       Run the end-to-end demo script"
 	@echo "  clean      Stop stack and prune unused volumes"
@@ -50,6 +51,9 @@ worker:
 
 watcher:
 	python -m retech_part2.ingestion.watcher
+
+mqtt:
+	python -m retech_part2.ingestion.mqtt.run_subscriber
 
 seed:
 	python scripts/seed_db.py

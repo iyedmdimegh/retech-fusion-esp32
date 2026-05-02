@@ -59,10 +59,15 @@ class Settings(BaseSettings):
     def redis_url(self) -> str:
         return f"redis://{self.redis_host}:{self.redis_port}/0"
 
-    # ---- MQTT (Phase 1 — stubbed) ----
-    mqtt_broker_host: str = "localhost"
+    # ---- MQTT (Phase 1 — live) ----
+    # Default broker host targets the Windows Mobile Hotspot adapter the ESP32
+    # nodes associate to. Override via .env when the host's hotspot IP differs.
+    mqtt_broker_host: str = "192.168.137.1"
     mqtt_broker_port: int = 1883
     mqtt_topic_readings: str = "retech/devices/+/readings"
+    mqtt_username: str = ""
+    mqtt_password: str = ""
+    mqtt_client_id: str = "retech_part2_ingestor"
 
     # ---- Invoice extraction ----
     extraction_strategy: ExtractionStrategy = "qwen_then_regex"
@@ -89,6 +94,26 @@ class Settings(BaseSettings):
     # ---- API ----
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+
+    # ---- CO₂ analytics (M12) ----
+    # Emission factors. Override in .env if regulator/utility figures change.
+    # Defaults: gas factor derived from PCI 9.082 thermie/Nm³ (BILAN sheet header)
+    # and CH₄/C₂H₆ stoichiometry; grid factor from STEG 2023 sustainability report.
+    co2_gas_factor_kg_per_nm3: float = 1.96
+    co2_grid_factor_kg_per_kwh: float = 0.47
+
+    # Forecast horizons in HOURS — applied AFTER hourly resampling.
+    # Comma-separated string parsed at use site (pydantic-settings keeps it simple).
+    co2_horizons: str = "1,6,24"
+    co2_test_ratio: float = 0.2
+    co2_anomaly_contamination: float = 0.02
+
+    # Where joblib pickles get written. Gitignored.
+    co2_models_dir: str = "data/models"
+
+    @property
+    def co2_horizons_list(self) -> list[int]:
+        return [int(x) for x in self.co2_horizons.split(",") if x.strip()]
 
 
 @lru_cache

@@ -41,6 +41,7 @@ inbox/pdf/*
 data/ocr_cache/
 data/fixtures/*
 !data/fixtures/.gitkeep
+data/models/
 
 # Logs
 *.log

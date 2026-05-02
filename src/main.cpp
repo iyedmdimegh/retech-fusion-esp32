@@ -3,9 +3,16 @@
 #include "config.h"
 #include "sensors_bme280.h"
 #include "sensors_ds18b20.h"
+#include "schema.h"
 
-static unsigned long lastHeartbeatMs = 0;
+static unsigned long lastHeartbeatMs  = 0;
 static unsigned long lastSensorReadMs = 0;
+static unsigned long lastPublishMs    = 0;
+
+// Latest sensor snapshot — refreshed at SENSOR_READ_INTERVAL_MS, consumed at
+// PUBLISH_INTERVAL_MS. Marked .ok=false until the first successful read.
+static Bme280Reading  s_bme{NAN, NAN, NAN, false};
+static Ds18b20Reading s_ds {NAN, false};
 
 static inline unsigned long uptimeS() {
     return (unsigned long)(millis() / 1000UL);
@@ -16,24 +23,37 @@ static void logHeartbeat() {
 }
 
 static void readAndPrintSensors() {
-    const Bme280Reading b = SensorsBme280::read();
-    const Ds18b20Reading d = SensorsDs18b20::read();
+    s_bme = SensorsBme280::read();
+    s_ds  = SensorsDs18b20::read();
 
-    if (!b.ok) {
+    if (!s_bme.ok) {
         Serial.printf("[WARN] [%lus] BME280 read failed (sensor not ready or NaN)\n",
                       uptimeS());
     } else {
         Serial.printf("[INFO] [%lus] BME280 : T=%.2f C  H=%.2f %%  P=%.2f hPa\n",
-                      uptimeS(), b.temperature_c, b.humidity_pct, b.pressure_hpa);
+                      uptimeS(), s_bme.temperature_c, s_bme.humidity_pct, s_bme.pressure_hpa);
     }
 
-    if (!d.ok) {
+    if (!s_ds.ok) {
         Serial.printf("[WARN] [%lus] DS18B20 read failed (disconnected or NaN)\n",
                       uptimeS());
     } else {
         Serial.printf("[INFO] [%lus] DS18B20: T=%.2f C\n",
-                      uptimeS(), d.temperature_c);
+                      uptimeS(), s_ds.temperature_c);
     }
+}
+
+static void buildAndPrintPayload() {
+    char buf[Schema::PAYLOAD_BUFFER_SIZE];
+    const size_t n = Schema::buildPayload(buf, sizeof(buf),
+                                          s_bme, s_ds,
+                                          /*rssi_dbm=*/0, // populated in M5
+                                          uptimeS());
+    if (n == 0) {
+        Serial.printf("[ERROR] [%lus] schema buildPayload returned 0\n", uptimeS());
+        return;
+    }
+    Serial.printf("[JSON] [%lus] %s\n", uptimeS(), buf);
 }
 
 void setup() {
@@ -62,5 +82,10 @@ void loop() {
     if (now - lastSensorReadMs >= SENSOR_READ_INTERVAL_MS) {
         lastSensorReadMs = now;
         readAndPrintSensors();
+    }
+
+    if (now - lastPublishMs >= PUBLISH_INTERVAL_MS) {
+        lastPublishMs = now;
+        buildAndPrintPayload();
     }
 }

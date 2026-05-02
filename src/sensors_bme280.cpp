@@ -11,8 +11,26 @@ namespace {
 
 Adafruit_BME280 bme;
 bool g_ready = false;
+bool g_scanned_on_failure = false;
 
 constexpr float PA_PER_HPA = 100.0f;
+
+void scanI2cAndReport() {
+    Serial.printf("[INFO] [%lus] I2C scan on SDA=%d SCL=%d ...\n",
+                  (unsigned long)(millis() / 1000UL),
+                  I2C_SDA_PIN, I2C_SCL_PIN);
+    int found = 0;
+    for (uint8_t addr = 0x03; addr < 0x78; addr++) {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0) {
+            Serial.printf("[INFO]   device responding at 0x%02X\n", addr);
+            found++;
+        }
+    }
+    if (found == 0) {
+        Serial.println(F("[INFO]   no devices on bus (wiring/power/pin issue)"));
+    }
+}
 
 void configureSampling() {
     // Weather-station preset: low power, ~1 Hz friendly, 1x oversampling.
@@ -39,6 +57,15 @@ bool begin() {
     if (!bme.begin(BME280_I2C_ADDR, &Wire)) {
         Serial.printf("[ERROR] [%lus] BME280 not found at 0x%02X (check wiring & 3.3V)\n",
                       (unsigned long)(millis() / 1000UL), BME280_I2C_ADDR);
+        if (!g_scanned_on_failure) {
+            g_scanned_on_failure = true;
+            scanI2cAndReport();
+            // Also try the alternative GY-BME280 address (SDO tied HIGH)
+            if (bme.begin(0x77, &Wire)) {
+                Serial.println(F("[INFO]   BME280 actually answered at 0x77 — "
+                                 "update BME280_I2C_ADDR in config.h"));
+            }
+        }
         g_ready = false;
         return false;
     }

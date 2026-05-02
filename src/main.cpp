@@ -3,6 +3,7 @@
 #include "config.h"
 #include "sensors_bme280.h"
 #include "sensors_ds18b20.h"
+#include "sensors_acs712.h"
 #include "schema.h"
 #include "network.h"
 #include "mqtt.h"
@@ -21,6 +22,8 @@ static bool g_fault_bme_nan = false;
 static bool g_fault_bme_oor = false;
 static bool g_fault_ds_nan  = false;
 static bool g_fault_ds_oor  = false;
+static bool g_fault_acs_nan = false;
+static bool g_fault_acs_oor = false;
 
 static unsigned long lastHeartbeatMs  = 0;
 static unsigned long lastSensorReadMs = 0;
@@ -30,6 +33,7 @@ static unsigned long lastPublishMs    = 0;
 // PUBLISH_INTERVAL_MS. Marked .ok=false until the first successful read.
 static Bme280Reading  s_bme{NAN, NAN, NAN, false, false};
 static Ds18b20Reading s_ds {NAN, false};
+static Acs712Reading  s_acs{NAN, false};
 
 static inline unsigned long uptimeS() {
     return (unsigned long)(millis() / 1000UL);
@@ -60,12 +64,22 @@ static void applyFaultInjection() {
         s_ds.temperature_c = 200.0f;
         s_ds.ok = true;
     }
+
+    if (g_fault_acs_nan) {
+        s_acs.current_a = NAN;
+        s_acs.ok = false;
+    } else if (g_fault_acs_oor) {
+        s_acs.current_a = 200.0f;   // > CURRENT_MAX_A
+        s_acs.ok = true;
+    }
 }
 
 static void printSerialHelp() {
     Serial.println(F("[INFO] Serial commands:"));
     Serial.println(F("[INFO]   b = toggle BME280 NaN fault         (B = out-of-range)"));
     Serial.println(F("[INFO]   d = toggle DS18B20 NaN fault        (D = out-of-range)"));
+    Serial.println(F("[INFO]   a = toggle ACS712 NaN fault         (A = out-of-range)"));
+    Serial.println(F("[INFO]   c = recalibrate ACS712 zero (motor MUST be off)"));
     Serial.println(F("[INFO]   r = clear all fault toggles"));
     Serial.println(F("[INFO]   ? = show this help"));
 }
@@ -88,8 +102,21 @@ static void handleSerialCommand(char c) {
             g_fault_ds_oor = !g_fault_ds_oor; g_fault_ds_nan = false;
             Serial.printf("[INFO] DS18B20 out-of-range fault: %s\n", g_fault_ds_oor ? "ON" : "OFF");
             break;
+        case 'a':
+            g_fault_acs_nan = !g_fault_acs_nan; g_fault_acs_oor = false;
+            Serial.printf("[INFO] ACS712 NaN fault: %s\n", g_fault_acs_nan ? "ON" : "OFF");
+            break;
+        case 'A':
+            g_fault_acs_oor = !g_fault_acs_oor; g_fault_acs_nan = false;
+            Serial.printf("[INFO] ACS712 out-of-range fault: %s\n", g_fault_acs_oor ? "ON" : "OFF");
+            break;
+        case 'c':
+            SensorsAcs712::calibrateZero();
+            break;
         case 'r':
-            g_fault_bme_nan = g_fault_bme_oor = g_fault_ds_nan = g_fault_ds_oor = false;
+            g_fault_bme_nan = g_fault_bme_oor = false;
+            g_fault_ds_nan  = g_fault_ds_oor  = false;
+            g_fault_acs_nan = g_fault_acs_oor = false;
             Serial.println(F("[INFO] all faults cleared"));
             break;
         case '?':
@@ -115,6 +142,7 @@ static void pumpSerial() {
 static void readAndPrintSensors() {
     s_bme = SensorsBme280::read();
     s_ds  = SensorsDs18b20::read();
+    s_acs = SensorsAcs712::read();
     applyFaultInjection();
 
     if (!s_bme.ok) {
@@ -132,6 +160,13 @@ static void readAndPrintSensors() {
         Serial.printf("[INFO] [%lus] DS18B20: T=%.2f C\n",
                       uptimeS(), s_ds.temperature_c);
     }
+
+    if (!s_acs.ok) {
+        Serial.printf("[WARN] [%lus] ACS712 read failed\n", uptimeS());
+    } else {
+        Serial.printf("[INFO] [%lus] ACS712 : I=%+.3f A (zero=%.0f mV)\n",
+                      uptimeS(), s_acs.current_a, SensorsAcs712::zeroOffsetMv());
+    }
 }
 
 // Build a payload from the latest sensor snapshot and enqueue it. The drainer
@@ -141,7 +176,7 @@ static void readAndPrintSensors() {
 static void buildAndQueuePayload() {
     char buf[Schema::PAYLOAD_BUFFER_SIZE];
     const size_t n = Schema::buildPayload(buf, sizeof(buf),
-                                          s_bme, s_ds,
+                                          s_bme, s_ds, s_acs,
                                           Network::rssiDbm(),
                                           uptimeS());
     if (n == 0) {
@@ -212,6 +247,7 @@ void setup() {
 
     SensorsBme280::begin();   // failures are logged inside; we keep running
     SensorsDs18b20::begin();
+    SensorsAcs712::begin();   // initial zero-offset calibration here — load MUST be off
     MsgBuffer::begin();
     Network::begin();
     MqttClient::begin();

@@ -22,6 +22,32 @@
 #define DS18B20_PIN      4
 #define DS18B20_RESOLUTION_BITS 12
 
+// ---- ACS712 current sensor -------------------------------------------------
+// MUST be an ADC1 GPIO (ADC2 is broken when Wi-Fi is up).
+// ADC1 channels on ESP32: 32, 33, 34, 35, 36, 39.
+#define ACS712_PIN                  33
+
+// Variant sensitivity (datasheet typ. values):
+//   ACS712-05B  ->  185 mV/A
+//   ACS712-20A  ->  100 mV/A
+//   ACS712-30A  ->   66 mV/A
+// Change ONLY this line if your IC is a different variant.
+#define ACS712_SENSITIVITY_MV_PER_A 185.0f
+
+// ACS712 OUT idles at VCC/2 (= 2500 mV when VCC=5V). The actual zero is
+// calibrated at boot and via the 'c' Serial command (sample with no load).
+#define ACS712_NOMINAL_ZERO_MV      2500.0f
+
+// External voltage divider on OUT to drop 0–5 V into ESP32's 0–3.3 V ADC.
+// Default: 10 kΩ top + 20 kΩ bottom -> ratio = 20 / (10+20) = 0.6667.
+// Change to 1.0f if you have NO divider (only safe for currents that keep
+// OUT below 3.3 V, e.g. ±4 A on the 5A part).
+#define ACS712_DIVIDER_RATIO        0.6667f
+
+// Per-read averaging filters out brush noise from DC motors.
+#define ACS712_SAMPLES_PER_READ     64
+#define ACS712_CALIBRATION_SAMPLES  256
+
 // ---- Timing (ms) -----------------------------------------------------------
 #define HEARTBEAT_INTERVAL_MS    1000UL
 #define SENSOR_READ_INTERVAL_MS  1000UL
@@ -51,6 +77,10 @@
 #define HUMIDITY_MAX_PCT  100.0f
 #define PRESSURE_MIN_HPA  300.0f
 #define PRESSURE_MAX_HPA 1100.0f
+// Broadest band that covers all ACS712 variants. Tighten for your motor
+// once you know its expected draw.
+#define CURRENT_MIN_A     -30.0f
+#define CURRENT_MAX_A      30.0f
 
 // ---- Cross-sensor drift ----------------------------------------------------
 #define DRIFT_ALERT_THRESHOLD_C  2.0f

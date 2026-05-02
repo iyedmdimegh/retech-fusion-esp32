@@ -25,6 +25,9 @@ inline bool isValidHumidity(float v) {
 inline bool isValidPressure(float v) {
     return !isnan(v) && v >= PRESSURE_MIN_HPA && v <= PRESSURE_MAX_HPA;
 }
+inline bool isValidCurrent(float v) {
+    return !isnan(v) && v >= CURRENT_MIN_A     && v <= CURRENT_MAX_A;
+}
 
 void appendReading(JsonArray& arr,
                    const char* type,
@@ -65,6 +68,7 @@ void formatTimestamp(char* buf, size_t n) {
 size_t buildPayload(char* out, size_t out_size,
                     const Bme280Reading& bme,
                     const Ds18b20Reading& ds,
+                    const Acs712Reading& acs,
                     int rssi_dbm,
                     unsigned long uptime_s) {
     if (out == nullptr || out_size == 0) return 0;
@@ -111,6 +115,12 @@ size_t buildPayload(char* out, size_t out_size,
 
     if (bme.ok && isValidPressure(bme.pressure_hpa)) {
         appendReading(readings, "pressure", bme.pressure_hpa, "hPa", baro_name);
+    } else {
+        any_dropped = true;
+    }
+
+    if (acs.ok && isValidCurrent(acs.current_a)) {
+        appendReading(readings, "current", acs.current_a, "ampere", "acs712");
     } else {
         any_dropped = true;
     }

@@ -1,0 +1,85 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "retech-part2"
+version = "0.1.0"
+description = "Re-Tech Fusion Hackathon — Phase 2: data platform & document ingestion"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "iyed Mdimegh" }]
+
+dependencies = [
+    # web
+    "fastapi>=0.115,<0.120",
+    "uvicorn[standard]>=0.32,<0.34",
+    "python-multipart>=0.0.20,<0.1",
+
+    # db
+    "sqlalchemy[asyncio]>=2.0.36,<2.1",
+    "asyncpg>=0.30,<0.31",
+    "psycopg[binary]>=3.2.3,<3.3",
+    "alembic>=1.14,<1.15",
+
+    # validation / config
+    "pydantic>=2.10,<2.12",
+    "pydantic-settings>=2.7,<2.8",
+    "pyyaml>=6.0.2,<7",
+
+    # excel / data
+    "openpyxl>=3.1.5,<3.2",
+    "pandas>=2.2.3,<2.3",
+    "pyarrow>=18.0,<19",
+    "rapidfuzz>=3.10,<4",
+
+    # pdf / ocr / vision
+    "pdf2image>=1.17,<2",
+    "pytesseract>=0.3.13,<0.4",
+    "pillow>=11.0,<12",
+    "opencv-python-headless>=4.10,<5",
+
+    # extraction tier
+    "ollama>=0.4,<0.5",
+    "httpx>=0.28,<0.29",
+
+    # messaging / queue / fs
+    "paho-mqtt>=2.1,<3",
+    "redis>=5.2,<6",
+    "rq>=2.0,<3",
+    "watchdog>=6.0,<7",
+
+    # logging
+    "structlog>=24.4,<25",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<9",
+    "pytest-asyncio>=0.25,<0.26",
+    "mypy>=1.13,<2",
+    "ruff>=0.8,<0.9",
+]
+synthetic = [
+    "reportlab>=4.2,<5",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/retech_part2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]
+plugins = ["pydantic.mypy"]

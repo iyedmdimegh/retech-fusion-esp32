@@ -1,0 +1,324 @@
+# Re-Tech Fusion BILAN canonical mapping
+# match_text: post-whitespace-normalization label from column B
+# context: optional column-A category disambiguator (required when raw labels collide)
+# range: optional [min, max] sanity bounds
+# monotonic: cumulative meter — should be non-decreasing in time
+
+mappings:
+
+  # ---- Gas consumption ----
+  - match_text: "Consommation du gaz naturel moteur en Nm3 (Volume)"
+    metric_id: gas.volume_cumulative
+    unit: Nm3
+    category: gas_consumption
+    monotonic: true
+  - match_text: "Débit du gaz naturel moteur en Nm3/h"
+    metric_id: gas.flow_rate
+    unit: Nm3/h
+    category: gas_consumption
+    range: [0, 500]
+
+  # ---- Empty parameter — listed for completeness, never has values ----
+  - match_text: "Puissance électrique nette"
+    metric_id: electrical.power.net
+    unit: kW
+    category: engine_electrical
+    expected_empty: true
+
+  # ---- Auxiliary consumption ----
+  - match_text: "Energie éléctrique en KWh"
+    context: "Consommation Auxiliare"
+    metric_id: electrical.auxiliary.energy_cumulative
+    unit: kWh
+    category: auxiliary_consumption
+    monotonic: true
+
+  # ---- Engine electrical ----
+  - match_text: "Puissance électrique Brute en KW"
+    metric_id: electrical.power.gross
+    unit: kW
+    category: engine_electrical
+    range: [0, 2000]
+  - match_text: "heure de fonctionnement"
+    metric_id: engine.operating_hours
+    unit: hours
+    category: engine
+    monotonic: true
+  - match_text: "Energie éléctrique au borne de l'alternateur en KWh"
+    metric_id: electrical.alternator.energy_cumulative
+    unit: kWh
+    category: engine_electrical
+    monotonic: true
+  - match_text: "Energie reactive en KVARh"
+    metric_id: electrical.reactive_energy_cumulative
+    unit: kVARh
+    category: engine_electrical
+    monotonic: true
+  - match_text: "Vitesse en rpm"
+    metric_id: engine.speed
+    unit: rpm
+    category: engine
+    range: [0, 1800]
+  - match_text: "Facteur de puissance"
+    metric_id: electrical.power_factor
+    unit: ratio
+    category: engine_electrical
+    range: [0, 1]
+  - match_text: "Voltage en V"
+    metric_id: electrical.voltage
+    unit: V
+    category: engine_electrical
+    range: [0, 500]
+  - match_text: "Courant: phase 1 en A"
+    metric_id: electrical.current.phase1
+    unit: A
+    category: engine_electrical
+    range: [0, 3000]
+  - match_text: "Courant: phase 2 en A"
+    metric_id: electrical.current.phase2
+    unit: A
+    category: engine_electrical
+    range: [0, 3000]
+  - match_text: "Courant: phase 3 en A"
+    metric_id: electrical.current.phase3
+    unit: A
+    category: engine_electrical
+    range: [0, 3000]
+
+  # ---- Chilled water (eau glacée) — context required ----
+  - match_text: "Débit en m3/h (FM01)"
+    context: "Energymeter eau glacée"
+    metric_id: chilled_water.flow_rate
+    unit: m3/h
+    category: chilled_water
+    range: [0, 200]
+  - match_text: "Temperature entrée  (TT02)"
+    context: "Energymeter eau glacée"
+    metric_id: chilled_water.temp_in
+    unit: celsius
+    category: chilled_water
+    range: [0, 50]
+  - match_text: "Temperature sortie (TT01)"
+    context: "Energymeter eau glacée"
+    metric_id: chilled_water.temp_out
+    unit: celsius
+    category: chilled_water
+    range: [0, 50]
+  - match_text: "Energie en kWh "
+    context: "Energymeter eau glacée"
+    metric_id: chilled_water.energy_cumulative
+    unit: kWh
+    category: chilled_water
+    monotonic: true
+  - match_text: "Puissance en KW"
+    context: "Energymeter eau glacée"
+    metric_id: chilled_water.power
+    unit: kW
+    category: chilled_water
+    range: [0, 1000]
+
+  # ---- Hot water recovered (eau chaude récupéré) ----
+  - match_text: "Débit en m3/h (FM02)"
+    context: "Energymeter eau chaude récupéré"
+    metric_id: hot_water_recovered.flow_rate
+    unit: m3/h
+    category: hot_water_recovered
+    range: [0, 100]
+  - match_text: "Temperature entrée (TT04)"
+    context: "Energymeter eau chaude récupéré"
+    metric_id: hot_water_recovered.temp_in
+    unit: celsius
+    category: hot_water_recovered
+    range: [0, 150]
+  - match_text: "Temperature sortie (TT03)"
+    context: "Energymeter eau chaude récupéré"
+    metric_id: hot_water_recovered.temp_out
+    unit: celsius
+    category: hot_water_recovered
+    range: [0, 150]
+  - match_text: "Energie en kWh"
+    context: "Energymeter eau chaude récupéré"
+    metric_id: hot_water_recovered.energy_cumulative
+    unit: kWh
+    category: hot_water_recovered
+    monotonic: true
+  - match_text: "Puissance en KW"
+    context: "Energymeter eau chaude récupéré"
+    metric_id: hot_water_recovered.power
+    unit: kW
+    category: hot_water_recovered
+    range: [0, 2000]
+
+  # ---- Hot water Alpha Sanitaire (TT07/TT08) ----
+  - match_text: "Débit en m3/h"
+    context: "Energymeter eau chaude  Alpha Sanitaire"
+    metric_id: hot_water_alpha_sanitaire.flow_rate
+    unit: m3/h
+    category: hot_water_alpha_sanitaire
+    range: [0, 50]
+  - match_text: "Temperature entrée (TT07)"
+    context: "Energymeter eau chaude  Alpha Sanitaire"
+    metric_id: hot_water_alpha_sanitaire.temp_in
+    unit: celsius
+    category: hot_water_alpha_sanitaire
+    range: [0, 100]
+  - match_text: "Temperature sortie (TT08)"
+    context: "Energymeter eau chaude  Alpha Sanitaire"
+    metric_id: hot_water_alpha_sanitaire.temp_out
+    unit: celsius
+    category: hot_water_alpha_sanitaire
+    range: [0, 100]
+  - match_text: "Energie en kWh"
+    context: "Energymeter eau chaude  Alpha Sanitaire"
+    metric_id: hot_water_alpha_sanitaire.energy_cumulative
+    unit: kWh
+    category: hot_water_alpha_sanitaire
+    monotonic: true
+  - match_text: "Puissance en KW"
+    context: "Energymeter eau chaude  Alpha Sanitaire"
+    metric_id: hot_water_alpha_sanitaire.power
+    unit: kW
+    category: hot_water_alpha_sanitaire
+    range: [0, 500]
+  - match_text: "Consigne de Température"
+    context: "Energymeter eau chaude  Alpha Sanitaire"
+    metric_id: hot_water_alpha_sanitaire.setpoint
+    unit: celsius
+    category: hot_water_alpha_sanitaire
+    range: [0, 100]
+  - match_text: "Lecture de Temperature"
+    context: "Energymeter eau chaude  Alpha Sanitaire"
+    metric_id: hot_water_alpha_sanitaire.reading
+    unit: celsius
+    category: hot_water_alpha_sanitaire
+    range: [0, 100]
+
+  # ---- Hot water Alpha (TT09/TT10) ----
+  - match_text: "Débit en m3/h"
+    context: "Energymeter eau chaude Alpha"
+    metric_id: hot_water_alpha.flow_rate
+    unit: m3/h
+    category: hot_water_alpha
+    range: [0, 50]
+  - match_text: "Temperature entrée (TT09)"
+    context: "Energymeter eau chaude Alpha"
+    metric_id: hot_water_alpha.temp_in
+    unit: celsius
+    category: hot_water_alpha
+    range: [0, 150]
+  - match_text: "Temperature sortie (TT10)"
+    context: "Energymeter eau chaude Alpha"
+    metric_id: hot_water_alpha.temp_out
+    unit: celsius
+    category: hot_water_alpha
+    range: [0, 150]
+  - match_text: "Energie en kWh"
+    context: "Energymeter eau chaude Alpha"
+    metric_id: hot_water_alpha.energy_cumulative
+    unit: kWh
+    category: hot_water_alpha
+    monotonic: true
+  - match_text: "Puissance en KW"
+    context: "Energymeter eau chaude Alpha"
+    metric_id: hot_water_alpha.power
+    unit: kW
+    category: hot_water_alpha
+    range: [0, 500]
+  - match_text: "Consigne de Température"
+    context: "Energymeter eau chaude Alpha"
+    metric_id: hot_water_alpha.setpoint
+    unit: celsius
+    category: hot_water_alpha
+    range: [0, 150]
+  - match_text: "Lecture de Temperature"
+    context: "Energymeter eau chaude Alpha"
+    metric_id: hot_water_alpha.reading
+    unit: celsius
+    category: hot_water_alpha
+    range: [0, 150]
+
+  # ---- Hot water Gamma (TT13/TT14) ----
+  - match_text: "Débit en m3/h"
+    context: "Energymeter eau chaude Gamma"
+    metric_id: hot_water_gamma.flow_rate
+    unit: m3/h
+    category: hot_water_gamma
+    range: [0, 50]
+  - match_text: "Temperature entrée (TT13)"
+    context: "Energymeter eau chaude Gamma"
+    metric_id: hot_water_gamma.temp_in
+    unit: celsius
+    category: hot_water_gamma
+    range: [0, 150]
+  - match_text: "Temperature sortie (TT14)"
+    context: "Energymeter eau chaude Gamma"
+    metric_id: hot_water_gamma.temp_out
+    unit: celsius
+    category: hot_water_gamma
+    range: [0, 150]
+  - match_text: "Energie en kWh"
+    context: "Energymeter eau chaude Gamma"
+    metric_id: hot_water_gamma.energy_cumulative
+    unit: kWh
+    category: hot_water_gamma
+    monotonic: true
+  - match_text: "Puissance en KW"
+    context: "Energymeter eau chaude Gamma"
+    metric_id: hot_water_gamma.power
+    unit: kW
+    category: hot_water_gamma
+    range: [0, 500]
+  - match_text: "Consigne de Température"
+    context: "Energymeter eau chaude Gamma"
+    metric_id: hot_water_gamma.setpoint
+    unit: celsius
+    category: hot_water_gamma
+    range: [0, 150]
+  - match_text: "Lecture de Temperature"
+    context: "Energymeter eau chaude Gamma"
+    metric_id: hot_water_gamma.reading
+    unit: celsius
+    category: hot_water_gamma
+    range: [0, 150]
+
+  # ---- Efficiencies ----
+  - match_text: "Rendement Electrique %"
+    metric_id: efficiency.electrical
+    unit: percent
+    category: efficiency
+    range: [0, 100]
+    derived: true
+  - match_text: "Rendement Thermique %"
+    metric_id: efficiency.thermal
+    unit: percent
+    category: efficiency
+    range: [0, 100]
+    derived: true
+  - match_text: "Rendement Total %"
+    metric_id: efficiency.total
+    unit: percent
+    category: efficiency
+    range: [0, 100]
+    derived: true
+
+  # ---- Grid exchange (STEG = Tunisian national operator) ----
+  - match_text: "Energie Positive Steg KWh"
+    metric_id: grid.steg.import_cumulative
+    unit: kWh
+    category: grid_exchange
+    monotonic: true
+  - match_text: "Energie Negative Steg KWh"
+    metric_id: grid.steg.export_cumulative
+    unit: kWh
+    category: grid_exchange
+    monotonic: true
+  - match_text: "Energie Positive Production KWh"
+    metric_id: grid.production.positive_cumulative
+    unit: kWh
+    category: grid_exchange
+    monotonic: true
+  - match_text: "Energie Negative Production KWh"
+    metric_id: grid.production.negative_cumulative
+    unit: kWh
+    category: grid_exchange
+    monotonic: true

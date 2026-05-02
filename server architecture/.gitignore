@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# uv / pip
+*.egg
+pip-log.txt
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project data
+inbox/xlsx/*
+inbox/pdf/*
+!inbox/xlsx/.gitkeep
+!inbox/pdf/.gitkeep
+data/ocr_cache/
+data/fixtures/*
+!data/fixtures/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Docker volumes (when bind-mounted)
+pgdata/
+redisdata/
+mqttdata/
+mqttlog/

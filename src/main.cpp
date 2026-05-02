@@ -6,6 +6,12 @@
 #include "schema.h"
 #include "network.h"
 #include "mqtt.h"
+#include "buffer.h"
+
+// How many buffered messages to drain per pass through loop(). Keeps the
+// main loop responsive while still flushing fast enough to clear a 100-deep
+// backlog in well under one publish interval.
+static constexpr size_t MAX_DRAIN_PER_PASS = 8;
 
 static unsigned long lastHeartbeatMs  = 0;
 static unsigned long lastSensorReadMs = 0;
@@ -45,7 +51,11 @@ static void readAndPrintSensors() {
     }
 }
 
-static void buildAndPublishPayload() {
+// Build a payload from the latest sensor snapshot and enqueue it. The drainer
+// (drainBufferIfPossible) does the actual MQTT publish — that way the offline
+// and online paths share the same code, and ordering is preserved across
+// reconnects.
+static void buildAndQueuePayload() {
     char buf[Schema::PAYLOAD_BUFFER_SIZE];
     const size_t n = Schema::buildPayload(buf, sizeof(buf),
                                           s_bme, s_ds,
@@ -57,18 +67,53 @@ static void buildAndPublishPayload() {
     }
     Serial.printf("[JSON] [%lus] %s\n", uptimeS(), buf);
 
-    if (!MqttClient::isConnected()) {
-        Serial.printf("[WARN] [%lus] MQTT not connected — payload dropped "
-                      "(M7 will buffer)\n", uptimeS());
+    const size_t before = MsgBuffer::size();
+    if (!MsgBuffer::push(buf, n)) {
+        Serial.printf("[ERROR] [%lus] payload (%u B) did not fit in ring buffer\n",
+                      uptimeS(), (unsigned)n);
         return;
     }
-    if (!MqttClient::publish(buf, n)) {
-        Serial.printf("[WARN] [%lus] MQTT publish failed — payload dropped "
-                      "(M7 will buffer)\n", uptimeS());
-        return;
+
+    if (MsgBuffer::isFull()) {
+        Serial.printf("[WARN] [%lus] ring buffer at capacity (%u/%u, dropped %u total)\n",
+                      uptimeS(),
+                      (unsigned)MsgBuffer::size(),
+                      (unsigned)MsgBuffer::capacity(),
+                      (unsigned)MsgBuffer::dropped());
+    } else if (!MqttClient::isConnected()) {
+        Serial.printf("[INFO] [%lus] queued offline (queue=%u/%u)\n",
+                      uptimeS(),
+                      (unsigned)MsgBuffer::size(),
+                      (unsigned)MsgBuffer::capacity());
     }
-    Serial.printf("[INFO] [%lus] MQTT published %u bytes to %s\n",
-                  uptimeS(), (unsigned)n, MQTT_TOPIC_READINGS);
+    (void)before;
+}
+
+static void drainBufferIfPossible() {
+    if (!MqttClient::isConnected()) return;
+    if (MsgBuffer::isEmpty())        return;
+
+    size_t drained = 0;
+    while (drained < MAX_DRAIN_PER_PASS && !MsgBuffer::isEmpty()) {
+        const char* p = nullptr;
+        size_t      l = 0;
+        if (!MsgBuffer::peekOldest(&p, &l)) break;
+
+        if (!MqttClient::publish(p, l)) {
+            // Likely a TCP / broker hiccup. Stop the drain pass and let the
+            // MQTT state machine reconnect — we'll retry on the next loop.
+            Serial.printf("[WARN] [%lus] drain publish failed — pausing (queue=%u)\n",
+                          uptimeS(), (unsigned)MsgBuffer::size());
+            break;
+        }
+
+        MsgBuffer::popOldest();
+        drained++;
+        Serial.printf("[INFO] [%lus] published %u B (queue=%u/%u)\n",
+                      uptimeS(), (unsigned)l,
+                      (unsigned)MsgBuffer::size(),
+                      (unsigned)MsgBuffer::capacity());
+    }
 }
 
 void setup() {
@@ -84,6 +129,7 @@ void setup() {
 
     SensorsBme280::begin();   // failures are logged inside; we keep running
     SensorsDs18b20::begin();
+    MsgBuffer::begin();
     Network::begin();
     MqttClient::begin();
 }
@@ -106,6 +152,10 @@ void loop() {
 
     if (now - lastPublishMs >= PUBLISH_INTERVAL_MS) {
         lastPublishMs = now;
-        buildAndPublishPayload();
+        buildAndQueuePayload();
     }
+
+    // Drain after queuing so a fresh sample can also go out this loop pass
+    // when MQTT is up and the queue was already empty.
+    drainBufferIfPossible();
 }

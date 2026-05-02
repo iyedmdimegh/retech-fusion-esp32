@@ -14,8 +14,8 @@
 #define SERIAL_BAUD      115200
 
 // ---- I2C / BME280 ----------------------------------------------------------
-#define I2C_SDA_PIN      21
-#define I2C_SCL_PIN      22
+#define I2C_SDA_PIN      22
+#define I2C_SCL_PIN      21
 #define BME280_I2C_ADDR  0x76
 
 // ---- DS18B20 ---------------------------------------------------------------

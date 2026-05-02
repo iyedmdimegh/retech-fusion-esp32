@@ -88,6 +88,32 @@ void scanI2cAndReport() {
     }
 }
 
+// Read register 0xD0 (chip-ID) on the given I2C address. Tells us whether the
+// device that ACKs at 0x76 is actually a BME280 (0x60), a BMP280 dressed up
+// as one (0x58 / 0x57 / 0x56), or something else entirely.
+void reportChipId(uint8_t addr) {
+    Wire.beginTransmission(addr);
+    Wire.write(0xD0);
+    if (Wire.endTransmission(false) != 0) {
+        Serial.printf("[INFO]   chip-id readback failed at 0x%02X\n", addr);
+        return;
+    }
+    Wire.requestFrom(addr, (uint8_t)1);
+    if (!Wire.available()) {
+        Serial.printf("[INFO]   chip-id readback: no data at 0x%02X\n", addr);
+        return;
+    }
+    const uint8_t id = Wire.read();
+    const char* name = "unknown";
+    switch (id) {
+        case 0x60: name = "BME280 (genuine — temp/humidity/pressure)"; break;
+        case 0x58: name = "BMP280 (NO humidity — temp/pressure only)"; break;
+        case 0x57: case 0x56: name = "BMP280 early sample"; break;
+    }
+    Serial.printf("[INFO]   chip ID at 0x%02X reg 0xD0 = 0x%02X (%s)\n",
+                  addr, id, name);
+}
+
 void configureSampling() {
     // Weather-station preset: low power, ~1 Hz friendly, 1x oversampling.
     bme.setSampling(Adafruit_BME280::MODE_NORMAL,
@@ -123,10 +149,13 @@ bool begin() {
             Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
             Wire.setClock(100000);
             scanI2cAndReport();
+            reportChipId(BME280_I2C_ADDR);
             // Try the alternative GY-BME280 address (SDO tied HIGH).
             if (bme.begin(0x77, &Wire)) {
                 Serial.println(F("[INFO]   BME280 actually answered at 0x77 — "
                                  "update BME280_I2C_ADDR in config.h to 0x77"));
+            } else {
+                reportChipId(0x77);
             }
         }
         g_fail_count++;

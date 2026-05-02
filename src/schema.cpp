@@ -13,6 +13,19 @@ namespace {
 // the placeholder format.
 constexpr time_t MIN_VALID_UNIX_TIME = 1700000000;
 
+// Per-quantity validity: rejects NaN and values outside the ranges defined in
+// config.h. Used to decide whether a reading is included in the payload; an
+// invalid value flips the top-level status to "invalid_reading".
+inline bool isValidTemp(float v) {
+    return !isnan(v) && v >= TEMP_MIN_C       && v <= TEMP_MAX_C;
+}
+inline bool isValidHumidity(float v) {
+    return !isnan(v) && v >= HUMIDITY_MIN_PCT && v <= HUMIDITY_MAX_PCT;
+}
+inline bool isValidPressure(float v) {
+    return !isnan(v) && v >= PRESSURE_MIN_HPA && v <= PRESSURE_MAX_HPA;
+}
+
 void appendReading(JsonArray& arr,
                    const char* type,
                    float value,
@@ -69,25 +82,25 @@ size_t buildPayload(char* out, size_t out_size,
 
     bool any_dropped = false;
 
-    if (ds.ok && !isnan(ds.temperature_c)) {
+    if (ds.ok && isValidTemp(ds.temperature_c)) {
         appendReading(readings, "temperature", ds.temperature_c, "celsius", "ds18b20");
     } else {
         any_dropped = true;
     }
 
-    if (bme.ok && !isnan(bme.temperature_c)) {
+    if (bme.ok && isValidTemp(bme.temperature_c)) {
         appendReading(readings, "temperature", bme.temperature_c, "celsius", "bme280");
     } else {
         any_dropped = true;
     }
 
-    if (bme.ok && !isnan(bme.humidity_pct)) {
+    if (bme.ok && isValidHumidity(bme.humidity_pct)) {
         appendReading(readings, "humidity", bme.humidity_pct, "percent", "bme280");
     } else {
         any_dropped = true;
     }
 
-    if (bme.ok && !isnan(bme.pressure_hpa)) {
+    if (bme.ok && isValidPressure(bme.pressure_hpa)) {
         appendReading(readings, "pressure", bme.pressure_hpa, "hPa", "bme280");
     } else {
         any_dropped = true;

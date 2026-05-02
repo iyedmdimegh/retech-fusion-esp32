@@ -13,6 +13,15 @@
 // backlog in well under one publish interval.
 static constexpr size_t MAX_DRAIN_PER_PASS = 8;
 
+// ---- Fault-injection toggles (M8 demo aids) -------------------------------
+// Press a key in the Serial Monitor to flip these. Each toggle is sticky
+// until pressed again, so the user can watch repeated payloads with the
+// faulted reading dropped and status flipped to "invalid_reading".
+static bool g_fault_bme_nan = false;
+static bool g_fault_bme_oor = false;
+static bool g_fault_ds_nan  = false;
+static bool g_fault_ds_oor  = false;
+
 static unsigned long lastHeartbeatMs  = 0;
 static unsigned long lastSensorReadMs = 0;
 static unsigned long lastPublishMs    = 0;
@@ -30,9 +39,83 @@ static void logHeartbeat() {
     Serial.printf("[INFO] [%lus] Booted fw v%s\n", uptimeS(), FW_VERSION);
 }
 
+static void applyFaultInjection() {
+    if (g_fault_bme_nan) {
+        s_bme.temperature_c = NAN;
+        s_bme.humidity_pct  = NAN;
+        s_bme.pressure_hpa  = NAN;
+        s_bme.ok = false;
+    } else if (g_fault_bme_oor) {
+        // Out-of-range but not NaN — exercises the range-check path.
+        s_bme.temperature_c = 200.0f;   // > TEMP_MAX_C (85)
+        s_bme.humidity_pct  = 150.0f;   // > HUMIDITY_MAX_PCT (100)
+        s_bme.pressure_hpa  = 50.0f;    // < PRESSURE_MIN_HPA (300)
+        s_bme.ok = true;
+    }
+
+    if (g_fault_ds_nan) {
+        s_ds.temperature_c = NAN;
+        s_ds.ok = false;
+    } else if (g_fault_ds_oor) {
+        s_ds.temperature_c = 200.0f;
+        s_ds.ok = true;
+    }
+}
+
+static void printSerialHelp() {
+    Serial.println(F("[INFO] Serial commands:"));
+    Serial.println(F("[INFO]   b = toggle BME280 NaN fault         (B = out-of-range)"));
+    Serial.println(F("[INFO]   d = toggle DS18B20 NaN fault        (D = out-of-range)"));
+    Serial.println(F("[INFO]   r = clear all fault toggles"));
+    Serial.println(F("[INFO]   ? = show this help"));
+}
+
+static void handleSerialCommand(char c) {
+    switch (c) {
+        case 'b':
+            g_fault_bme_nan = !g_fault_bme_nan; g_fault_bme_oor = false;
+            Serial.printf("[INFO] BME280 NaN fault: %s\n", g_fault_bme_nan ? "ON" : "OFF");
+            break;
+        case 'B':
+            g_fault_bme_oor = !g_fault_bme_oor; g_fault_bme_nan = false;
+            Serial.printf("[INFO] BME280 out-of-range fault: %s\n", g_fault_bme_oor ? "ON" : "OFF");
+            break;
+        case 'd':
+            g_fault_ds_nan = !g_fault_ds_nan; g_fault_ds_oor = false;
+            Serial.printf("[INFO] DS18B20 NaN fault: %s\n", g_fault_ds_nan ? "ON" : "OFF");
+            break;
+        case 'D':
+            g_fault_ds_oor = !g_fault_ds_oor; g_fault_ds_nan = false;
+            Serial.printf("[INFO] DS18B20 out-of-range fault: %s\n", g_fault_ds_oor ? "ON" : "OFF");
+            break;
+        case 'r':
+            g_fault_bme_nan = g_fault_bme_oor = g_fault_ds_nan = g_fault_ds_oor = false;
+            Serial.println(F("[INFO] all faults cleared"));
+            break;
+        case '?':
+        case 'h':
+            printSerialHelp();
+            break;
+        case '\r':
+        case '\n':
+        case ' ':
+            break; // ignore whitespace
+        default:
+            Serial.printf("[INFO] unknown command '%c' — press ? for help\n", c);
+            break;
+    }
+}
+
+static void pumpSerial() {
+    while (Serial.available()) {
+        handleSerialCommand((char)Serial.read());
+    }
+}
+
 static void readAndPrintSensors() {
     s_bme = SensorsBme280::read();
     s_ds  = SensorsDs18b20::read();
+    applyFaultInjection();
 
     if (!s_bme.ok) {
         Serial.printf("[WARN] [%lus] BME280 read failed (sensor not ready or NaN)\n",
@@ -132,9 +215,11 @@ void setup() {
     MsgBuffer::begin();
     Network::begin();
     MqttClient::begin();
+    printSerialHelp();
 }
 
 void loop() {
+    pumpSerial();
     Network::loop();
     MqttClient::loop();
 

@@ -1,0 +1,188 @@
+{
+  "name": "Retech Fusion — Hourly KPI Report",
+  "nodes": [
+    {
+      "id": "sticky-setup-kpi",
+      "name": "Setup Instructions",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [240, 60],
+      "parameters": {
+        "content": "## 📊 Retech Fusion — Hourly KPI Report\n\n**Two trigger paths share workflow static data:**\n\n**Path A — MQTT Accumulator** (runs every 10 s per device publish)\n→ Parses each reading and pushes it into static storage (last 360 readings = 1 h rolling window)\n\n**Path B — Scheduled Report** (runs every hour by default)\n→ Reads static storage, computes KPI min/avg/max, sends HTML email report\n\n**Before activating:**\n1. Add **MQTT credential** (same broker as Anomaly Alert workflow)\n2. Add **SMTP credential**\n3. Update `fromEmail` / `toEmail` in the **Send KPI Report Email** node\n4. Adjust schedule in **Every Hour** node if needed\n5. Activate the workflow\n\n**KPIs reported:** Temperature (avg/min/max), Humidity, Pressure, Cross-sensor Drift, RSSI, Data Quality %, Invalid Readings, Drift Anomaly Events",
+        "height": 380,
+        "width": 500,
+        "color": 5
+      }
+    },
+
+    {
+      "id": "node-mqtt-trigger-kpi",
+      "name": "MQTT: Accumulate Readings",
+      "type": "n8n-nodes-base.mqttTrigger",
+      "typeVersion": 1,
+      "position": [800, 280],
+      "parameters": {
+        "topic": "retech/devices/esp32_node_01/readings",
+        "options": {}
+      },
+      "credentials": {
+        "mqtt": {
+          "id": "REPLACE_MQTT_CRED_ID",
+          "name": "Mosquitto Broker"
+        }
+      }
+    },
+    {
+      "id": "node-store-reading",
+      "name": "Store Reading",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1020, 280],
+      "parameters": {
+        "jsCode": "const raw = $input.item.json;\nlet payload;\ntry {\n  payload = typeof raw.message === 'string' ? JSON.parse(raw.message) : (raw.message || raw);\n} catch (e) {\n  return [{ json: { stored: false, error: e.message } }];\n}\n\nconst readings = payload.readings || [];\nconst tempDS  = readings.find(r => r.sensor === 'ds18b20' && r.type === 'temperature');\nconst tempBME = readings.find(r => (r.sensor === 'bme280' || r.sensor === 'bmp280') && r.type === 'temperature');\nconst hum  = readings.find(r => r.type === 'humidity');\nconst pres = readings.find(r => r.type === 'pressure');\n\nconst tDS  = tempDS  ? tempDS.value  : null;\nconst tBME = tempBME ? tempBME.value : null;\nconst avgTemp = (tDS !== null && tBME !== null) ? (tDS + tBME) / 2\n              : (tDS !== null ? tDS : tBME);\nconst drift = (tDS !== null && tBME !== null)\n  ? parseFloat(Math.abs(tDS - tBME).toFixed(2)) : null;\n\nconst globalData = $getWorkflowStaticData('global');\nif (!Array.isArray(globalData.readings)) globalData.readings = [];\n\nglobalData.readings.push({\n  ts:                payload.timestamp || new Date().toISOString(),\n  avg_temp:          avgTemp !== null ? parseFloat(avgTemp.toFixed(2)) : null,\n  temp_drift:        drift,\n  humidity:          hum  ? hum.value  : null,\n  pressure:          pres ? pres.value : null,\n  rssi:              payload.rssi       ?? null,\n  status:            payload.status     || 'unknown',\n  is_invalid:        payload.status === 'invalid_reading' ? 1 : 0,\n  has_drift_anomaly: (drift !== null && drift > 2.0) ? 1 : 0\n});\n\n// Rolling 1-hour window at 10 s publish interval = 360 readings\nif (globalData.readings.length > 360) {\n  globalData.readings = globalData.readings.slice(-360);\n}\n\nglobalData.last_device_id = payload.device_id || 'unknown';\nglobalData.last_site      = payload.site       || 'unknown';\nglobalData.last_fw        = payload.fw_version || 'N/A';\nglobalData.last_rssi      = payload.rssi       ?? null;\n\nreturn [{ json: {\n  stored: true,\n  total_readings: globalData.readings.length\n}}];"
+      }
+    },
+    {
+      "id": "node-noop-mqtt-end",
+      "name": "Accumulated",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1240, 280],
+      "parameters": {}
+    },
+
+    {
+      "id": "node-schedule-trigger",
+      "name": "Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [800, 520],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node-read-analyze",
+      "name": "Read & Compute KPIs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1020, 520],
+      "parameters": {
+        "jsCode": "const globalData = $getWorkflowStaticData('global');\nconst readings = globalData.readings || [];\n\nif (readings.length === 0) {\n  return [{ json: { has_data: false } }];\n}\n\nconst nonNull = (key) => readings.map(r => r[key]).filter(v => v !== null && !isNaN(v));\nconst avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;\nconst min = arr => arr.length ? Math.min(...arr) : null;\nconst max = arr => arr.length ? Math.max(...arr) : null;\nconst fmt2 = v => v !== null ? parseFloat(v.toFixed(2)) : null;\nconst fmt1 = v => v !== null ? parseFloat(v.toFixed(1)) : null;\nconst fmtInt = v => v !== null ? Math.round(v) : null;\n\nconst temps  = nonNull('avg_temp');\nconst hums   = nonNull('humidity');\nconst press  = nonNull('pressure');\nconst rssis  = nonNull('rssi');\nconst drifts = nonNull('temp_drift');\n\nconst invalidCount     = readings.reduce((s, r) => s + (r.is_invalid        || 0), 0);\nconst driftAnomalyCount = readings.reduce((s, r) => s + (r.has_drift_anomaly || 0), 0);\nconst dataQuality = parseFloat(((1 - invalidCount / readings.length) * 100).toFixed(1));\n\nreturn [{ json: {\n  has_data:      true,\n  device_id:     globalData.last_device_id || 'unknown',\n  site:          globalData.last_site      || 'unknown',\n  fw_version:    globalData.last_fw        || 'N/A',\n  report_time:   new Date().toISOString(),\n  period_start:  readings[0].ts,\n  period_end:    readings[readings.length - 1].ts,\n  total_readings: readings.length,\n  kpis: {\n    temperature: {\n      avg: fmt2(avg(temps)),\n      min: fmt2(min(temps)),\n      max: fmt2(max(temps))\n    },\n    humidity: {\n      avg: fmt1(avg(hums)),\n      min: fmt1(min(hums)),\n      max: fmt1(max(hums))\n    },\n    pressure: {\n      avg: fmt1(avg(press)),\n      min: fmt1(min(press)),\n      max: fmt1(max(press))\n    },\n    temp_drift: {\n      avg: fmt2(avg(drifts)),\n      max: fmt2(max(drifts))\n    },\n    rssi: {\n      avg: fmtInt(avg(rssis)),\n      min: min(rssis),\n      max: max(rssis)\n    },\n    data_quality_pct:     dataQuality,\n    invalid_readings:     invalidCount,\n    drift_anomaly_events: driftAnomalyCount\n  }\n}}];"
+      }
+    },
+    {
+      "id": "node-if-has-data",
+      "name": "Has Data?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1240, 520],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-has-data",
+              "leftValue": "={{ $json.has_data }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "node-build-kpi-email",
+      "name": "Build KPI Report Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1460, 420],
+      "parameters": {
+        "jsCode": "const d   = $input.item.json;\nconst kpi = d.kpis;\n\nconst qColor = kpi.data_quality_pct >= 95 ? '#2e7d32'\n             : kpi.data_quality_pct >= 80 ? '#e65100' : '#c62828';\nconst qIcon  = kpi.data_quality_pct >= 95 ? '\\u2705'\n             : kpi.data_quality_pct >= 80 ? '\\u26a0\\ufe0f' : '\\ud83d\\udd34';\n\nconst durationMin = Math.round(d.total_readings * 10 / 60);\n\nconst reportDate = new Date(d.report_time);\nconst dateStr = reportDate.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });\nconst timeStr = reportDate.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });\n\nconst statCard = (value, label, color) =>\n  '<div style=\\'flex:1;min-width:140px;background:#fff;border:1px solid #e9ecef;border-radius:8px;padding:16px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.06)\\'>' +\n    '<div style=\\'font-size:26px;font-weight:700;color:' + color + '\\'>' + value + '</div>' +\n    '<div style=\\'font-size:11px;color:#6c757d;margin-top:4px;text-transform:uppercase;letter-spacing:.4px\\'>' + label + '</div>' +\n  '</div>';\n\nconst kpiRow = (label, avg, min, max, unit, warn) => {\n  const warnStyle = warn ? 'color:#c62828;font-weight:700' : 'color:#212529';\n  const fmt = v => v !== null ? v + ' ' + unit : '<span style=\\'color:#adb5bd\\'>N/A</span>';\n  return '<tr>' +\n    '<td style=\\'padding:9px 14px;color:#6c757d;border-bottom:1px solid #f0f0f0;font-size:13px\\'>' + label + '</td>' +\n    '<td style=\\'padding:9px 14px;border-bottom:1px solid #f0f0f0;font-size:13px;' + warnStyle + '\\'>' + fmt(avg) + '</td>' +\n    '<td style=\\'padding:9px 14px;border-bottom:1px solid #f0f0f0;font-size:13px\\'>' + fmt(min) + '</td>' +\n    '<td style=\\'padding:9px 14px;border-bottom:1px solid #f0f0f0;font-size:13px\\'>' + fmt(max) + '</td>' +\n  '</tr>';\n};\n\nconst tempWarn = (kpi.temperature.max !== null && kpi.temperature.max > 40)\n             || (kpi.temperature.min !== null && kpi.temperature.min < 5);\nconst humWarn  = (kpi.humidity.max   !== null && kpi.humidity.max   > 80)\n             || (kpi.humidity.min    !== null && kpi.humidity.min    < 20);\nconst presWarn = (kpi.pressure.min   !== null && kpi.pressure.min   < 950)\n             || (kpi.pressure.max    !== null && kpi.pressure.max   > 1060);\nconst driftWarn = kpi.temp_drift.max  !== null && kpi.temp_drift.max  > 2.0;\nconst rssiWarn  = kpi.rssi.min        !== null && kpi.rssi.min        < -80;\n\nconst html =\n  '<!DOCTYPE html><html><body style=\\'font-family:Arial,sans-serif;background:#f0f2f5;margin:0;padding:20px\\'>' +\n  '<div style=\\'max-width:720px;margin:0 auto;background:#f8f9fa;border-radius:10px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.12)\\'>' +\n\n  '<div style=\\'background:linear-gradient(135deg,#0d3b6e,#1565c0);padding:28px 32px\\'>' +\n    '<h1 style=\\'color:#fff;margin:0;font-size:20px;letter-spacing:.3px\\'>\\ud83d\\udcca Re\\u00b7Tech Fusion \\u2014 KPI Summary Report</h1>' +\n    '<p style=\\'color:#90caf9;margin:6px 0 0;font-size:12px\\'>' + d.device_id + ' \\u00b7 ' + d.site + ' \\u00b7 ' + dateStr + ' ' + timeStr + ' UTC</p>' +\n  '</div>' +\n\n  '<div style=\\'padding:28px 32px;background:#fff\\'>' +\n\n    '<div style=\\'display:flex;gap:12px;margin-bottom:28px;flex-wrap:wrap\\'>' +\n      statCard(d.total_readings, 'Readings (' + durationMin + ' min)', '#1565c0') +\n      statCard(kpi.data_quality_pct + '%', qIcon + ' Data Quality', qColor) +\n      statCard(kpi.drift_anomaly_events, 'Drift Events (>2\\u00b0C)', kpi.drift_anomaly_events > 0 ? '#e65100' : '#2e7d32') +\n      statCard(kpi.invalid_readings, 'Invalid Readings', kpi.invalid_readings > 0 ? '#c62828' : '#2e7d32') +\n    '</div>' +\n\n    '<table style=\\'width:100%;border-collapse:collapse\\'>' +\n      '<thead><tr style=\\'background:#f8f9fa\\'>' +\n        '<th style=\\'padding:10px 14px;text-align:left;border-bottom:2px solid #dee2e6;font-size:11px;text-transform:uppercase;color:#6c757d;letter-spacing:.5px\\'>Metric</th>' +\n        '<th style=\\'padding:10px 14px;text-align:left;border-bottom:2px solid #dee2e6;font-size:11px;text-transform:uppercase;color:#6c757d;letter-spacing:.5px\\'>Average</th>' +\n        '<th style=\\'padding:10px 14px;text-align:left;border-bottom:2px solid #dee2e6;font-size:11px;text-transform:uppercase;color:#6c757d;letter-spacing:.5px\\'>Min</th>' +\n        '<th style=\\'padding:10px 14px;text-align:left;border-bottom:2px solid #dee2e6;font-size:11px;text-transform:uppercase;color:#6c757d;letter-spacing:.5px\\'>Max</th>' +\n      '</tr></thead>' +\n      '<tbody>' +\n        kpiRow('Temperature',             kpi.temperature.avg, kpi.temperature.min, kpi.temperature.max, '\\u00b0C',  tempWarn)  +\n        kpiRow('Humidity',                kpi.humidity.avg,    kpi.humidity.min,    kpi.humidity.max,    '%',        humWarn)   +\n        kpiRow('Pressure',                kpi.pressure.avg,    kpi.pressure.min,    kpi.pressure.max,    'hPa',      presWarn)  +\n        kpiRow('Temp Drift (cross-sensor)',kpi.temp_drift.avg,  null,               kpi.temp_drift.max,  '\\u00b0C',  driftWarn) +\n        kpiRow('Wi-Fi RSSI',              kpi.rssi.avg,        kpi.rssi.min,        kpi.rssi.max,        'dBm',      rssiWarn)  +\n      '</tbody>' +\n    '</table>' +\n\n    '<div style=\\'margin-top:20px;padding:12px 16px;background:#f8f9fa;border-radius:6px;font-size:12px;color:#6c757d;border:1px solid #e9ecef\\'>' +\n      '<strong>Report period:</strong> ' + d.period_start + ' \\u2192 ' + d.period_end +\n      '<br><strong>Firmware:</strong> ' + d.fw_version +\n    '</div>' +\n\n  '</div>' +\n  '<div style=\\'background:#f8f9fa;padding:16px 32px;text-align:center;font-size:11px;color:#adb5bd;border-top:1px solid #dee2e6\\'>' +\n    'Re\\u00b7Tech Fusion IoT Platform \\u00b7 INSAT, University of Carthage \\u00b7 Automated KPI Report' +\n  '</div>' +\n  '</div></body></html>';\n\nreturn [{ json: {\n  ...d,\n  email_subject: '[KPI Report] ' + d.device_id + ' @ ' + d.site + ' \\u2014 ' + dateStr + ' ' + timeStr + ' UTC',\n  email_html: html\n}}];"
+      }
+    },
+    {
+      "id": "node-send-kpi-email",
+      "name": "Send KPI Report Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1680, 420],
+      "parameters": {
+        "fromEmail": "reports@retech-fusion.io",
+        "toEmail": "team@retech-fusion.io",
+        "subject": "={{ $json.email_subject }}",
+        "emailType": "html",
+        "message": "={{ $json.email_html }}",
+        "options": {}
+      },
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_SMTP_CRED_ID",
+          "name": "SMTP Server"
+        }
+      }
+    },
+    {
+      "id": "node-no-data",
+      "name": "No Data Yet — Skip",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1460, 640],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "MQTT: Accumulate Readings": {
+      "main": [
+        [{ "node": "Store Reading", "type": "main", "index": 0 }]
+      ]
+    },
+    "Store Reading": {
+      "main": [
+        [{ "node": "Accumulated", "type": "main", "index": 0 }]
+      ]
+    },
+    "Every Hour": {
+      "main": [
+        [{ "node": "Read & Compute KPIs", "type": "main", "index": 0 }]
+      ]
+    },
+    "Read & Compute KPIs": {
+      "main": [
+        [{ "node": "Has Data?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Has Data?": {
+      "main": [
+        [{ "node": "Build KPI Report Email",  "type": "main", "index": 0 }],
+        [{ "node": "No Data Yet — Skip",       "type": "main", "index": 0 }]
+      ]
+    },
+    "Build KPI Report Email": {
+      "main": [
+        [{ "node": "Send KPI Report Email", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "retech-v1-kpi-report-2026",
+  "id": "retech-kpi-report"
+}

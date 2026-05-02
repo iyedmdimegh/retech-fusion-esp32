@@ -1,0 +1,96 @@
+{
+  "name": "Retech Fusion — Real-time Anomaly Alert",
+  "nodes": [
+    {
+      "id": "sticky-setup",
+      "name": "Setup Instructions",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [240, 60],
+      "parameters": {
+        "content": "## ⚡ Retech Fusion — Real-time Anomaly Alert\n\nTriggered by your **anomaly detection model** via HTTP POST.\n\n**Webhook URL (after activating):**\n`http://localhost:5678/webhook/retech-anomaly-alert`\n\n---\n\n**Call it from your Python model:**\n```python\nimport requests\n\nWEBHOOK = 'http://localhost:5678/webhook/retech-anomaly-alert'\n\ndef report_anomaly(payload: dict):\n    requests.post(WEBHOOK, json=payload, timeout=5)\n\n# Minimum required payload:\npayload = {\n  'device_id': 'esp32_node_01',\n  'site': 'insat_lab_zone_a',\n  'timestamp': '2026-05-03T10:00:00Z',\n  'model_name': 'IsolationForest',   # optional\n  'model_score': -0.45,              # optional\n  'anomalies': [\n    {\n      'type': 'TEMPERATURE_DRIFT',\n      'severity': 'MEDIUM',          # HIGH / MEDIUM / LOW\n      'message': 'Drift 3.1 °C'\n    }\n  ],\n  'temp_ds18b20': 28.5,\n  'temp_bme280':  25.4,\n  'avg_temp':     26.95,\n  'temp_drift':   3.1,\n  'humidity':     52.0,\n  'pressure':     1012.5,\n  'rssi':        -65,\n  'uptime_s':     7200,\n  'status':       'ok'\n}\nreport_anomaly(payload)\n```\n\n---\n\n**Before activating:**\n1. Add **SMTP credential** → Settings → Credentials → New → SMTP\n2. Update `fromEmail` / `toEmail` in the **Send Alert Email** node",
+        "height": 640,
+        "width": 520,
+        "color": 4
+      }
+    },
+    {
+      "id": "node-webhook-trigger",
+      "name": "Anomaly Model Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [820, 360],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "retech-anomaly-alert",
+        "responseMode": "onReceived",
+        "responseData": "firstEntryJson",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-normalize",
+      "name": "Normalize Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 360],
+      "parameters": {
+        "jsCode": "// Accept body from webhook (n8n v2 webhook puts data under .body)\nconst body = $input.item.json.body || $input.item.json;\n\nconst anomalies = Array.isArray(body.anomalies) ? body.anomalies : [];\n\nif (anomalies.length === 0) {\n  throw new Error('Payload contains no anomalies — model should only call this webhook when an anomaly is detected');\n}\n\n// Recompute highest_severity in case the model omitted it\nconst highest = body.highest_severity\n  || (anomalies.some(a => a.severity === 'HIGH')   ? 'HIGH'\n    : anomalies.some(a => a.severity === 'MEDIUM') ? 'MEDIUM'\n    : 'LOW');\n\nreturn [{ json: {\n  device_id:    body.device_id    || 'esp32_node_01',\n  site:         body.site         || 'insat_lab_zone_a',\n  timestamp:    body.timestamp    || new Date().toISOString(),\n  fw_version:   body.fw_version   || 'N/A',\n  uptime_s:     body.uptime_s     ?? 0,\n  rssi:         body.rssi         ?? null,\n  status:       body.status       || 'anomaly',\n  model_name:   body.model_name   || null,\n  model_score:  body.model_score  ?? null,\n  temp_ds18b20: body.temp_ds18b20 ?? null,\n  temp_bme280:  body.temp_bme280  ?? null,\n  avg_temp:     body.avg_temp     ?? null,\n  humidity:     body.humidity     ?? null,\n  pressure:     body.pressure     ?? null,\n  temp_drift:   body.temp_drift   ?? null,\n  anomalies,\n  anomaly_count:    anomalies.length,\n  has_anomalies:    true,\n  highest_severity: highest\n}}];"
+      }
+    },
+    {
+      "id": "node-build-email",
+      "name": "Build Alert Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1260, 360],
+      "parameters": {
+        "jsCode": "const d = $input.item.json;\n\nconst COLOR = { HIGH: '#c62828', MEDIUM: '#e65100', LOW: '#01579b', NONE: '#2e7d32' };\nconst ICON  = { HIGH: '\\ud83d\\udd34', MEDIUM: '\\ud83d\\udfe1', LOW: '\\ud83d\\udd35' };\n\nconst uptimeH = Math.floor(d.uptime_s / 3600);\nconst uptimeM = Math.floor((d.uptime_s % 3600) / 60);\n\nconst anomalyRows = d.anomalies.map(a =>\n  '<tr>' +\n    '<td style=\\'padding:9px 14px;border-bottom:1px solid #f0f0f0;font-weight:600\\'>' + ICON[a.severity] + ' ' + a.type.replace(/_/g, ' ') + '</td>' +\n    '<td style=\\'padding:9px 14px;border-bottom:1px solid #f0f0f0;color:' + COLOR[a.severity] + ';font-weight:700\\'>' + a.severity + '</td>' +\n    '<td style=\\'padding:9px 14px;border-bottom:1px solid #f0f0f0;font-size:13px\\'>' + a.message + '</td>' +\n  '</tr>'\n).join('');\n\nconst row = (label, val, warn) =>\n  '<tr>' +\n    '<td style=\\'padding:7px 14px;color:#6c757d;border-bottom:1px solid #f5f5f5\\'>' + label + '</td>' +\n    '<td style=\\'padding:7px 14px;border-bottom:1px solid #f5f5f5;' + (warn ? 'color:#c62828;font-weight:700' : '') + '\\'>' + val + '</td>' +\n  '</tr>';\n\nconst scoreStr = d.model_score !== null\n  ? parseFloat(d.model_score.toFixed(4)) + ' (lower = more anomalous)'\n  : 'N/A';\n\nconst modelSection = (d.model_name || d.model_score !== null)\n  ? '<h3 style=\\'margin:0 0 8px;font-size:13px;text-transform:uppercase;color:#6c757d;letter-spacing:.5px\\'>Detection Model</h3>' +\n    '<table style=\\'width:100%;border-collapse:collapse;margin-bottom:24px;font-size:14px\\'><tbody>' +\n      (d.model_name  ? row('Model',           d.model_name,  false) : '') +\n      (d.model_score !== null ? row('Anomaly Score', scoreStr, false) : '') +\n    '</tbody></table>'\n  : '';\n\nconst html =\n  '<!DOCTYPE html><html><body style=\\'font-family:Arial,sans-serif;background:#f0f2f5;margin:0;padding:20px\\'>' +\n  '<div style=\\'max-width:700px;margin:0 auto;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.12)\\'>' +\n\n  '<div style=\\'background:linear-gradient(135deg,#1a1a2e,#16213e);padding:28px 32px\\'>' +\n    '<h1 style=\\'color:#fff;margin:0;font-size:20px;letter-spacing:.3px\\'>\\u26a1 Re\\u00b7Tech Fusion \\u2014 Anomaly Alert</h1>' +\n    '<p style=\\'color:#8892b0;margin:6px 0 0;font-size:12px\\'>INSAT Industrial IoT \\u00b7 ' + d.device_id + ' \\u00b7 ' + d.site + '</p>' +\n  '</div>' +\n\n  '<div style=\\'padding:28px 32px\\'>' +\n\n    '<div style=\\'background:#fff8e1;border-left:5px solid ' + COLOR[d.highest_severity] + ';padding:14px 18px;border-radius:0 6px 6px 0;margin-bottom:24px\\'>' +\n      '<strong style=\\'font-size:15px\\'>' + ICON[d.highest_severity] + ' ' + d.anomaly_count + ' Anomal' + (d.anomaly_count === 1 ? 'y' : 'ies') + ' Detected \\u2014 Max Severity: <span style=\\'color:' + COLOR[d.highest_severity] + '\\'>' + d.highest_severity + '</span></strong>' +\n    '</div>' +\n\n    modelSection +\n\n    '<h3 style=\\'margin:0 0 8px;font-size:13px;text-transform:uppercase;color:#6c757d;letter-spacing:.5px\\'>Device Info</h3>' +\n    '<table style=\\'width:100%;border-collapse:collapse;margin-bottom:24px;font-size:14px\\'><tbody>' +\n      row('Device ID',       d.device_id,     false) +\n      row('Site',            d.site,           false) +\n      row('Timestamp (UTC)', d.timestamp,      false) +\n      row('Firmware',        d.fw_version,     false) +\n      row('Uptime',          uptimeH + 'h ' + uptimeM + 'm', false) +\n      row('Wi-Fi RSSI',      d.rssi + ' dBm',  d.rssi !== null && d.rssi < -80) +\n      row('Device Status',   d.status,         d.status === 'invalid_reading') +\n    '</tbody></table>' +\n\n    '<h3 style=\\'margin:0 0 8px;font-size:13px;text-transform:uppercase;color:#6c757d;letter-spacing:.5px\\'>Sensor Readings</h3>' +\n    '<table style=\\'width:100%;border-collapse:collapse;margin-bottom:24px;font-size:14px\\'><tbody>' +\n      row('Temp \\u2014 DS18B20',     d.temp_ds18b20 !== null ? d.temp_ds18b20 + ' \\u00b0C' : 'N/A', false) +\n      row('Temp \\u2014 BME280',      d.temp_bme280  !== null ? d.temp_bme280  + ' \\u00b0C' : 'N/A', false) +\n      row('Cross-sensor Drift',      d.temp_drift   !== null ? d.temp_drift   + ' \\u00b0C' : 'N/A', d.temp_drift !== null && d.temp_drift > 2.0) +\n      row('Humidity',                d.humidity     !== null ? d.humidity     + ' %'       : 'N/A', d.humidity !== null && (d.humidity > 80 || d.humidity < 20)) +\n      row('Pressure',                d.pressure     !== null ? d.pressure     + ' hPa'     : 'N/A', d.pressure !== null && (d.pressure < 950 || d.pressure > 1060)) +\n    '</tbody></table>' +\n\n    '<h3 style=\\'margin:0 0 8px;font-size:13px;text-transform:uppercase;color:#6c757d;letter-spacing:.5px\\'>Detected Anomalies</h3>' +\n    '<table style=\\'width:100%;border-collapse:collapse;font-size:14px\\'>' +\n      '<thead><tr style=\\'background:#f8f9fa\\'>' +\n        '<th style=\\'padding:9px 14px;text-align:left;border-bottom:2px solid #dee2e6;font-size:12px;text-transform:uppercase;color:#6c757d\\'>Anomaly</th>' +\n        '<th style=\\'padding:9px 14px;text-align:left;border-bottom:2px solid #dee2e6;font-size:12px;text-transform:uppercase;color:#6c757d\\'>Severity</th>' +\n        '<th style=\\'padding:9px 14px;text-align:left;border-bottom:2px solid #dee2e6;font-size:12px;text-transform:uppercase;color:#6c757d\\'>Details</th>' +\n      '</tr></thead>' +\n      '<tbody>' + anomalyRows + '</tbody>' +\n    '</table>' +\n\n  '</div>' +\n  '<div style=\\'background:#f8f9fa;padding:16px 32px;text-align:center;font-size:11px;color:#adb5bd;border-top:1px solid #dee2e6\\'>' +\n    'Re\\u00b7Tech Fusion IoT Platform \\u00b7 INSAT, University of Carthage \\u00b7 Automated Anomaly Alert' +\n  '</div>' +\n  '</div></body></html>';\n\nreturn [{ json: {\n  ...d,\n  email_subject: '[' + d.highest_severity + '] ' + d.anomaly_count + ' Anomal' + (d.anomaly_count === 1 ? 'y' : 'ies') + ' \\u2014 ' + d.device_id + ' @ ' + d.site,\n  email_html: html\n}}];"
+      }
+    },
+    {
+      "id": "node-send-alert-email",
+      "name": "Send Alert Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1480, 360],
+      "parameters": {
+        "fromEmail": "alerts@retech-fusion.io",
+        "toEmail": "team@retech-fusion.io",
+        "subject": "={{ $json.email_subject }}",
+        "emailType": "html",
+        "message": "={{ $json.email_html }}",
+        "options": {}
+      },
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_SMTP_CRED_ID",
+          "name": "SMTP Server"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Anomaly Model Webhook": {
+      "main": [
+        [{ "node": "Normalize Payload", "type": "main", "index": 0 }]
+      ]
+    },
+    "Normalize Payload": {
+      "main": [
+        [{ "node": "Build Alert Email", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Alert Email": {
+      "main": [
+        [{ "node": "Send Alert Email", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "retech-v2-anomaly-alert-2026",
+  "id": "retech-anomaly-alert"
+}

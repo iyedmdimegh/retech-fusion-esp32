@@ -4,6 +4,7 @@
 #include "sensors_bme280.h"
 #include "sensors_ds18b20.h"
 #include "schema.h"
+#include "network.h"
 
 static unsigned long lastHeartbeatMs  = 0;
 static unsigned long lastSensorReadMs = 0;
@@ -47,7 +48,7 @@ static void buildAndPrintPayload() {
     char buf[Schema::PAYLOAD_BUFFER_SIZE];
     const size_t n = Schema::buildPayload(buf, sizeof(buf),
                                           s_bme, s_ds,
-                                          /*rssi_dbm=*/0, // populated in M5
+                                          Network::rssiDbm(),
                                           uptimeS());
     if (n == 0) {
         Serial.printf("[ERROR] [%lus] schema buildPayload returned 0\n", uptimeS());
@@ -69,9 +70,12 @@ void setup() {
 
     SensorsBme280::begin();   // failures are logged inside; we keep running
     SensorsDs18b20::begin();
+    Network::begin();
 }
 
 void loop() {
+    Network::loop();
+
     const unsigned long now = millis();
 
     if (now - lastHeartbeatMs >= HEARTBEAT_INTERVAL_MS) {

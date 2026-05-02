@@ -31,6 +31,16 @@
 #define RECONNECT_BACKOFF_MIN_MS 1000UL
 #define RECONNECT_BACKOFF_MAX_MS 60000UL
 
+// ---- Wi-Fi -----------------------------------------------------------------
+#define WIFI_HOSTNAME           DEVICE_ID
+#define WIFI_CONNECT_TIMEOUT_MS 15000UL
+#define WIFI_POLL_INTERVAL_MS     250UL
+
+// ---- NTP -------------------------------------------------------------------
+#define NTP_SERVER_PRIMARY    "pool.ntp.org"
+#define NTP_SERVER_SECONDARY  "time.nist.gov"
+#define NTP_TZ_OFFSET_S       0  // UTC; schema timestamps end with 'Z'
+
 // ---- Buffering -------------------------------------------------------------
 #define RING_BUFFER_CAPACITY     100
 

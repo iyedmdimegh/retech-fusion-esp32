@@ -82,6 +82,10 @@ size_t buildPayload(char* out, size_t out_size,
 
     bool any_dropped = false;
 
+    // Sensor name for the BME280/BMP280 family — picked at runtime by the
+    // driver so dashboards see the actual chip in use.
+    const char* baro_name = SensorsBme280::sensorName();
+
     if (ds.ok && isValidTemp(ds.temperature_c)) {
         appendReading(readings, "temperature", ds.temperature_c, "celsius", "ds18b20");
     } else {
@@ -89,19 +93,24 @@ size_t buildPayload(char* out, size_t out_size,
     }
 
     if (bme.ok && isValidTemp(bme.temperature_c)) {
-        appendReading(readings, "temperature", bme.temperature_c, "celsius", "bme280");
+        appendReading(readings, "temperature", bme.temperature_c, "celsius", baro_name);
     } else {
         any_dropped = true;
     }
 
-    if (bme.ok && isValidHumidity(bme.humidity_pct)) {
-        appendReading(readings, "humidity", bme.humidity_pct, "percent", "bme280");
-    } else {
-        any_dropped = true;
+    // Humidity slot: only emit / drop when the chip actually has a humidity
+    // sensor. On BMP280 (has_humidity == false) the slot is silently absent —
+    // it's not a fault, so don't flip status.
+    if (bme.has_humidity) {
+        if (bme.ok && isValidHumidity(bme.humidity_pct)) {
+            appendReading(readings, "humidity", bme.humidity_pct, "percent", baro_name);
+        } else {
+            any_dropped = true;
+        }
     }
 
     if (bme.ok && isValidPressure(bme.pressure_hpa)) {
-        appendReading(readings, "pressure", bme.pressure_hpa, "hPa", "bme280");
+        appendReading(readings, "pressure", bme.pressure_hpa, "hPa", baro_name);
     } else {
         any_dropped = true;
     }

@@ -28,7 +28,7 @@ static unsigned long lastPublishMs    = 0;
 
 // Latest sensor snapshot — refreshed at SENSOR_READ_INTERVAL_MS, consumed at
 // PUBLISH_INTERVAL_MS. Marked .ok=false until the first successful read.
-static Bme280Reading  s_bme{NAN, NAN, NAN, false};
+static Bme280Reading  s_bme{NAN, NAN, NAN, false, false};
 static Ds18b20Reading s_ds {NAN, false};
 
 static inline unsigned long uptimeS() {

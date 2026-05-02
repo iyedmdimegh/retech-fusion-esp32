@@ -5,6 +5,7 @@
 #include "sensors_ds18b20.h"
 #include "schema.h"
 #include "network.h"
+#include "mqtt.h"
 
 static unsigned long lastHeartbeatMs  = 0;
 static unsigned long lastSensorReadMs = 0;
@@ -44,7 +45,7 @@ static void readAndPrintSensors() {
     }
 }
 
-static void buildAndPrintPayload() {
+static void buildAndPublishPayload() {
     char buf[Schema::PAYLOAD_BUFFER_SIZE];
     const size_t n = Schema::buildPayload(buf, sizeof(buf),
                                           s_bme, s_ds,
@@ -55,6 +56,19 @@ static void buildAndPrintPayload() {
         return;
     }
     Serial.printf("[JSON] [%lus] %s\n", uptimeS(), buf);
+
+    if (!MqttClient::isConnected()) {
+        Serial.printf("[WARN] [%lus] MQTT not connected — payload dropped "
+                      "(M7 will buffer)\n", uptimeS());
+        return;
+    }
+    if (!MqttClient::publish(buf, n)) {
+        Serial.printf("[WARN] [%lus] MQTT publish failed — payload dropped "
+                      "(M7 will buffer)\n", uptimeS());
+        return;
+    }
+    Serial.printf("[INFO] [%lus] MQTT published %u bytes to %s\n",
+                  uptimeS(), (unsigned)n, MQTT_TOPIC_READINGS);
 }
 
 void setup() {
@@ -71,10 +85,12 @@ void setup() {
     SensorsBme280::begin();   // failures are logged inside; we keep running
     SensorsDs18b20::begin();
     Network::begin();
+    MqttClient::begin();
 }
 
 void loop() {
     Network::loop();
+    MqttClient::loop();
 
     const unsigned long now = millis();
 
@@ -90,6 +106,6 @@ void loop() {
 
     if (now - lastPublishMs >= PUBLISH_INTERVAL_MS) {
         lastPublishMs = now;
-        buildAndPrintPayload();
+        buildAndPublishPayload();
     }
 }

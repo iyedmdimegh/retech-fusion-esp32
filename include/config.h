@@ -60,3 +60,7 @@
 #define MQTT_QOS             1
 #define MQTT_RETAINED        false
 #define MQTT_KEEPALIVE_S     30
+// PubSubClient default buffer is 256 B; our payload is ~360 B + topic + headers.
+// Bump to 768 to cover headroom plus any growth from future schema extensions.
+#define MQTT_TX_BUFFER_SIZE  768
+#define MQTT_SOCKET_TIMEOUT_S 5

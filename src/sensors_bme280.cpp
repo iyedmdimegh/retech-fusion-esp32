@@ -11,9 +11,28 @@ namespace {
 
 Adafruit_BME280 bme;
 bool g_ready = false;
-bool g_scanned_on_failure = false;
+unsigned int g_fail_count = 0;
 
 constexpr float PA_PER_HPA = 100.0f;
+
+void reportBusElectricals() {
+    // Briefly take the I2C pins back as plain GPIO inputs WITHOUT enabling the
+    // internal pull-ups, so we can see what voltage the external pull-ups
+    // (or competing pull-downs like an onboard LED) actually settle at.
+    pinMode(I2C_SDA_PIN, INPUT);
+    pinMode(I2C_SCL_PIN, INPUT);
+    delayMicroseconds(50);
+    const int sda_idle = digitalRead(I2C_SDA_PIN);
+    const int scl_idle = digitalRead(I2C_SCL_PIN);
+    Serial.printf("[INFO]   bus idle (no internal pullup): SDA=%s  SCL=%s\n",
+                  sda_idle ? "HIGH" : "LOW",
+                  scl_idle ? "HIGH" : "LOW");
+    if (!sda_idle || !scl_idle) {
+        Serial.println(F("[INFO]   -> a LOW idle line means no external pull-up "
+                         "is reaching it (bad wire, no power, or a competing "
+                         "pull-down such as an onboard LED on this pin)"));
+    }
+}
 
 void scanI2cAndReport() {
     Serial.printf("[INFO] [%lus] I2C scan on SDA=%d SCL=%d ...\n",
@@ -57,15 +76,23 @@ bool begin() {
     if (!bme.begin(BME280_I2C_ADDR, &Wire)) {
         Serial.printf("[ERROR] [%lus] BME280 not found at 0x%02X (check wiring & 3.3V)\n",
                       (unsigned long)(millis() / 1000UL), BME280_I2C_ADDR);
-        if (!g_scanned_on_failure) {
-            g_scanned_on_failure = true;
+
+        // Run the full diagnostic on the very first failure, and again every
+        // 10 retries so the user can always see it without scrolling.
+        const bool do_diag = (g_fail_count == 0) || (g_fail_count % 10 == 0);
+        if (do_diag) {
+            reportBusElectricals();
+            // Restore I2C mode after the electrical sniff.
+            Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+            Wire.setClock(100000);
             scanI2cAndReport();
-            // Also try the alternative GY-BME280 address (SDO tied HIGH)
+            // Try the alternative GY-BME280 address (SDO tied HIGH).
             if (bme.begin(0x77, &Wire)) {
                 Serial.println(F("[INFO]   BME280 actually answered at 0x77 — "
-                                 "update BME280_I2C_ADDR in config.h"));
+                                 "update BME280_I2C_ADDR in config.h to 0x77"));
             }
         }
+        g_fail_count++;
         g_ready = false;
         return false;
     }

@@ -1,11 +1,48 @@
 #include "sensors_bme280.h"
 
-#include <Wire.h>
-#include <Adafruit_BME280.h>
-#include <Adafruit_Sensor.h>
 #include <math.h>
 
 #include "config.h"
+
+// =============================================================================
+// Dummy-mode stub (compile-time selected via -D USE_DUMMY_SENSORS=1).
+// Returns constant readings matching the schema example so the rest of the
+// architecture can be developed and demoed without working hardware.
+// =============================================================================
+#ifdef USE_DUMMY_SENSORS
+
+namespace {
+bool g_ready = false;
+constexpr float DUMMY_TEMP_C    = 23.7f;
+constexpr float DUMMY_HUMID_PCT = 45.2f;
+constexpr float DUMMY_PRES_HPA  = 1013.25f;
+}
+
+namespace SensorsBme280 {
+
+bool begin() {
+    if (!g_ready) {
+        Serial.printf("[INFO] [%lus] BME280 dummy mode — returning constants\n",
+                      (unsigned long)(millis() / 1000UL));
+        g_ready = true;
+    }
+    return true;
+}
+
+bool isReady() { return g_ready; }
+
+Bme280Reading read() {
+    if (!g_ready) begin();
+    return {DUMMY_TEMP_C, DUMMY_HUMID_PCT, DUMMY_PRES_HPA, true};
+}
+
+} // namespace SensorsBme280
+
+#else // ====================== Real I2C / Adafruit_BME280 path ================
+
+#include <Wire.h>
+#include <Adafruit_BME280.h>
+#include <Adafruit_Sensor.h>
 
 namespace {
 
@@ -134,3 +171,5 @@ Bme280Reading read() {
 }
 
 } // namespace SensorsBme280
+
+#endif // USE_DUMMY_SENSORS

@@ -627,4 +627,109 @@ client.loop_forever()
 
 ---
 
+## 17. Edge ML — Part 3A
+
+### Model architecture
+
+Single multi-output MLP that predicts all 5 sensor channels simultaneously,
+deployed directly on the ESP32 for local anomaly detection (no cloud/server).
+
+```
+Input (25)  = 5 channels × sliding window of 5
+     ↓
+Dense (16, ReLU)
+     ↓
+Dense (8, ReLU)
+     ↓
+Dense (5, Sigmoid)  = normalised prediction for next step of each channel
+```
+
+- **Parameters**: ~597 (25×16 + 16 + 16×8 + 8 + 8×5 + 5)
+- **Quantisation**: `tf.lite.Optimize.DEFAULT` (weight compression, no representative dataset)
+- **Typical TFLite model size**: 4–8 KB
+- **Tensor arena on ESP32**: 16 KB (SRAM)
+- **Inference latency**: <50 ms measured on ESP32 @ 240 MHz
+
+### Multi-channel bonus claim
+
+**A single model predicts all 5 sensor channels simultaneously** — one inference call
+returns predictions for DS18B20 temp, BMP280 temp, BMP280 pressure, and ACS712 current
+(and BME280 humidity if a real BME280 is connected). This satisfies the multi-sensor
+bonus criterion.
+
+### How to reproduce training
+
+```bash
+# 1. Collect data (≥30 rows recommended, >100 ideal)
+python tools/subscribe.py --host 192.168.137.1 --jsonl training_data.jsonl
+
+# 2. Install Python dependencies
+pip install tensorflow numpy scikit-learn
+
+# 3. Train and generate the C header
+python tools/train_model.py
+```
+
+The script prints row count, model size in bytes, and per-channel validation MAE
+— **screenshot this output** as submission evidence.
+
+Example output:
+```
+============================================================
+ Re-Tech Fusion — Edge ML Training
+============================================================
+  JSONL file : .../training_data.jsonl
+  Rows found : 120
+  ...
+  ✓ TFLite model size : 5248 bytes  (5.12 KB)
+
+  Per-channel MAE (normalised 0–1):
+    CH0 ds18b20_T : 0.0312
+    CH1 bme_T     : 0.0287
+    CH2 bme_H     : 0.0000   ← constant (BMP280, no humidity)
+    CH3 bme_P     : 0.0198
+    CH4 acs_I     : 0.0441
+
+  ✓ C header written : include/model_data.h
+```
+
+### Firmware integration (Part 1)
+
+After training, `include/model_data.h` is generated automatically. Then:
+
+1. Add EloquentTinyML dep in `platformio.ini` (already included).
+2. Build + flash normally — `edge_inference.cpp` picks up the header.
+
+Serial Monitor will show an `[EDGE]` line every 10 s:
+```
+[EDGE] [30s] anomaly=0 max_err=0.043 worst_ch=4 latency=18ms
+```
+
+### Anomaly demo
+
+1. Flash the trained firmware.
+2. Wait 60 s for the 5-reading window to warm up.
+3. In Serial Monitor, press **`B`** (BME280 out-of-range fault injection).
+4. Next `[EDGE]` line will show `anomaly=1` and `worst_ch=1` (BMP280 temperature channel).
+5. Press **`r`** to clear; anomaly flag clears on the following cycle.
+
+### Fallback: z-score statistical detection
+
+If EloquentTinyML fails to compile (TFLite Micro dependency issues), uncomment
+`-D EDGE_FALLBACK_ZSCORE` in `platformio.ini` build_flags. The same
+`EdgeResult` API is used — no changes to `main.cpp` required. Inference
+becomes Welford's online z-score; anomaly fires when `|x − μ| > 2σ` on any channel.
+No model file and no training step are needed.
+
+### Files
+
+| File | Purpose |
+|---|---|
+| [`tools/train_model.py`](../tools/train_model.py) | Training + TFLite conversion + header generation |
+| [`include/model_data.h`](../include/model_data.h) | Auto-generated C header (do not edit) |
+| [`include/edge_inference.h`](../include/edge_inference.h) | Public API: `push()`, `run()`, `EdgeResult` |
+| [`src/edge_inference.cpp`](../src/edge_inference.cpp) | TFLite primary + z-score fallback implementations |
+
+---
+
 *Built for the Re·Tech Fusion Hackathon — INSAT, University of Carthage.*

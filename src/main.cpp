@@ -8,6 +8,7 @@
 #include "network.h"
 #include "mqtt.h"
 #include "buffer.h"
+#include "edge_inference.h"
 
 // How many buffered messages to drain per pass through loop(). Keeps the
 // main loop responsive while still flushing fast enough to clear a 100-deep
@@ -167,6 +168,16 @@ static void readAndPrintSensors() {
         Serial.printf("[INFO] [%lus] ACS712 : I=%+.3f A (zero=%.0f mV)\n",
                       uptimeS(), s_acs.current_a, SensorsAcs712::zeroOffsetMv());
     }
+
+    // Push latest 5-channel reading into the EdgeML sliding window
+    const float ch[EDGE_CHANNELS] = {
+        s_ds.ok  ?  s_ds.temperature_c                            : 25.0f,
+        s_bme.ok ?  s_bme.temperature_c                           : 25.0f,
+        (s_bme.ok && s_bme.has_humidity) ? s_bme.humidity_pct     : 50.0f,
+        s_bme.ok ?  s_bme.pressure_hpa                            : 1013.0f,
+        s_acs.ok ?  s_acs.current_a                               :  0.0f,
+    };
+    EdgeInference::push(ch);
 }
 
 // Build a payload from the latest sensor snapshot and enqueue it. The drainer
@@ -184,6 +195,14 @@ static void buildAndQueuePayload() {
         return;
     }
     Serial.printf("[JSON] [%lus] %s\n", uptimeS(), buf);
+
+    // EdgeML inference (runs every 10 s once window is full)
+    const EdgeResult er = EdgeInference::run();
+    if (er.valid) {
+        Serial.printf("[EDGE] [%lus] anomaly=%d max_err=%.3f worst_ch=%d latency=%lums\n",
+                      uptimeS(), (int)er.anomaly_detected,
+                      er.max_error, er.worst_channel, er.latency_ms);
+    }
 
     const size_t before = MsgBuffer::size();
     if (!MsgBuffer::push(buf, n)) {
@@ -248,6 +267,7 @@ void setup() {
     SensorsBme280::begin();   // failures are logged inside; we keep running
     SensorsDs18b20::begin();
     SensorsAcs712::begin();   // initial zero-offset calibration here — load MUST be off
+    EdgeInference::begin();   // load TFLite model (or init z-score accumulators)
     MsgBuffer::begin();
     Network::begin();
     MqttClient::begin();
